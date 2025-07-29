@@ -2,12 +2,10 @@ import React, { createContext, useContext, useState, useEffect, ReactNode } from
 import { authService } from '../services/api';
 
 interface User {
-  id: string;
+  id: number;
+  name: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  createdAt: string;
-  updatedAt: string;
+  role: 'Admin' | 'User';
 }
 
 interface AuthContextType {
@@ -62,10 +60,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       setUser(response.user);
       console.log('User data set, navigating to members page...');
 
-      // Navigate to member page - use setTimeout to ensure state updates first
+      // Navigate to dashboard - use setTimeout to ensure state updates first
       setTimeout(() => {
-        console.log('Setting hash to #members...');
-        window.location.hash = '#members';
+        console.log('Setting hash to #dashboard...');
+        window.location.hash = '#dashboard';
         // Force a hash change event
         window.dispatchEvent(new HashChangeEvent('hashchange'));
         console.log('Navigation complete');

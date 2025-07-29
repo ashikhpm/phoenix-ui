@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import ProtectedRoute from './auth/ProtectedRoute';
+import RoleBasedRoute from './auth/RoleBasedRoute';
 import AuthManager from './auth/AuthManager';
 import UserDashboard from './dashboard/UserDashboard';
 import MemberPage from './members/MemberPage';
@@ -8,6 +9,7 @@ import MeetingPage from './meetings/MeetingPage';
 import MeetingDetailsPage from './meetings/MeetingDetailsPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import LoanManager from './loans/LoanManager';
+import ProfilePage from './auth/ProfilePage';
 import { Box, CircularProgress, Typography } from '@mui/material';
 
 const AppRouter: React.FC = () => {
@@ -88,19 +90,35 @@ const AppRouter: React.FC = () => {
       case 'dashboard':
         return <UserDashboard />;
       case 'members':
-        return <MemberPage />;
+        return (
+          <RoleBasedRoute allowedRoles={['Admin']}>
+            <MemberPage />
+          </RoleBasedRoute>
+        );
       case 'meetings':
-        return <MeetingPage />;
+        return (
+          <RoleBasedRoute allowedRoles={['Admin']}>
+            <MeetingPage />
+          </RoleBasedRoute>
+        );
       case 'meeting-details':
-        return <MeetingDetailsPage onBack={() => window.location.hash = '#meetings'} />;
+        return (
+          <RoleBasedRoute allowedRoles={['Admin']}>
+            <MeetingDetailsPage onBack={() => window.location.hash = '#meetings'} />
+          </RoleBasedRoute>
+        );
       case 'profile':
-        return <PlaceholderPage title="Profile" description="Profile page coming soon..." />;
+        return <ProfilePage />;
       case 'settings':
         return <PlaceholderPage title="Settings" description="Settings page coming soon..." />;
       case 'loans':
-        return <LoanManager />;
+        return (
+          <RoleBasedRoute allowedRoles={['Admin']}>
+            <LoanManager />
+          </RoleBasedRoute>
+        );
       default:
-        return <MemberPage />;
+        return <UserDashboard />;
     }
   };
 

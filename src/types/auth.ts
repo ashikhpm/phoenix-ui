@@ -1,12 +1,10 @@
 // Authentication Types
 
 export interface User {
-  id: string;
+  id: number;
+  name: string;
   email: string;
-  firstName: string;
-  lastName: string;
-  createdAt: string;
-  updatedAt: string;
+  role: 'Admin' | 'User';
 }
 
 export interface LoginCredentials {

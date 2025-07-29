@@ -34,9 +34,10 @@ import {
   TablePagination,
   DialogContentText,
 } from '@mui/material';
-import { Add, Edit, Delete, Person, AccountBalance, PersonAdd, AttachMoney, Schedule, TrendingUp } from '@mui/icons-material';
+import { Add, Edit, Delete, Person, AccountBalance, PersonAdd, AttachMoney, Schedule, TrendingUp, Payment } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import AuthenticatedLayout from '../layout/AuthenticatedLayout';
+import LoanRepayment from './LoanRepayment';
 
 interface User {
   id: number;
@@ -52,6 +53,7 @@ interface Loan {
   user: User;
   date: string;
   dueDate: string;
+  closedDate?: string;
   interestRate: number;
   amount: number;
   interestAmount: number;
@@ -62,6 +64,7 @@ const emptyLoan: Partial<Loan> = {
   userId: 0,
   date: '',
   dueDate: '',
+  closedDate: '',
   interestRate: 0,
   amount: 0,
   interestAmount: 0,
@@ -78,6 +81,8 @@ const LoanManager: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [repaymentDialogOpen, setRepaymentDialogOpen] = useState(false);
+  const [selectedLoanForRepayment, setSelectedLoanForRepayment] = useState<Loan | null>(null);
   const [users, setUsers] = useState<User[]>([]);
 
   // Fetch loans
@@ -129,6 +134,21 @@ const LoanManager: React.FC = () => {
     setActiveTab(0);
   };
 
+  const handleRepayment = (loan: Loan) => {
+    setSelectedLoanForRepayment(loan);
+    setRepaymentDialogOpen(true);
+  };
+
+  const handleRepaymentClose = () => {
+    setRepaymentDialogOpen(false);
+    setSelectedLoanForRepayment(null);
+  };
+
+  const handleRepaymentSaved = () => {
+    fetchLoans();
+    handleRepaymentClose();
+  };
+
   // Handle save (create or update)
   const handleSave = async (formData: Partial<Loan>) => {
     setSaving(true);
@@ -138,6 +158,7 @@ const LoanManager: React.FC = () => {
         userId: formData.userId,
         date: formData.date,
         dueDate: formData.dueDate,
+        closedDate: formData.closedDate || null,
         interestRate: formData.interestRate,
         amount: formData.amount,
         status: formData.status
@@ -213,6 +234,7 @@ const LoanManager: React.FC = () => {
                 error={error}
                 onEdit={handleEdit}
                 onDelete={(id) => { setDeleteId(id); setDeleteDialogOpen(true); }}
+                onRepayment={handleRepayment}
                 refreshKey={refreshKey}
               />
             )}
@@ -245,6 +267,14 @@ const LoanManager: React.FC = () => {
             </Button>
           </DialogActions>
         </Dialog>
+
+        {/* Loan Repayment Dialog */}
+        <LoanRepayment
+          open={repaymentDialogOpen}
+          onClose={handleRepaymentClose}
+          loan={selectedLoanForRepayment}
+          onSaved={handleRepaymentSaved}
+        />
       </Box>
     </AuthenticatedLayout>
   );
@@ -257,10 +287,11 @@ interface LoanListProps {
   error: string | null;
   onEdit: (loan: Loan) => void;
   onDelete: (id: number) => void;
+  onRepayment: (loan: Loan) => void;
   refreshKey: number;
 }
 
-const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDelete }) => {
+const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDelete, onRepayment }) => {
   const theme = useTheme();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -451,6 +482,12 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                     </TableCell>
                     <TableCell sx={{ py: 3 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Schedule sx={{ mr: 2, fontSize: 24 }} />
+                        Closed Date
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ py: 3 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <TrendingUp sx={{ mr: 2, fontSize: 24 }} />
                         Interest Rate
                       </Box>
@@ -520,6 +557,11 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                         </Typography>
                       </TableCell>
                       <TableCell sx={{ py: 3 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {loan.closedDate ? new Date(loan.closedDate).toLocaleDateString() : '-'}
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ py: 3 }}>
                         <Typography variant="body2">
                           {loan.interestRate}%
                         </Typography>
@@ -561,6 +603,20 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                             }}
                           >
                             <Edit />
+                          </IconButton>
+                          <IconButton 
+                            color="success" 
+                            onClick={() => onRepayment(loan)}
+                            sx={{ 
+                              backgroundColor: theme.palette.success.light + '20',
+                              '&:hover': {
+                                backgroundColor: theme.palette.success.light + '40',
+                                transform: 'scale(1.1)',
+                              },
+                              transition: 'all 0.2s ease-in-out',
+                            }}
+                          >
+                            <Payment />
                           </IconButton>
                           <IconButton 
                             color="error" 
@@ -710,6 +766,16 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, onSaved, onCancelEdit,
           fullWidth
           InputLabelProps={{ shrink: true }}
           required
+        />
+
+        <TextField
+          label="Closed Date"
+          type="date"
+          value={formData.closedDate ? formData.closedDate.slice(0, 10) : ''}
+          onChange={e => setFormData({ ...formData, closedDate: e.target.value })}
+          fullWidth
+          InputLabelProps={{ shrink: true }}
+          helperText="Leave empty if loan is not closed yet"
         />
 
         <TextField

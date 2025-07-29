@@ -94,18 +94,22 @@ const Navbar: React.FC = () => {
                 <Dashboard sx={{ mr: 1 }} />
                 Dashboard
               </MenuItem>
-              <MenuItem onClick={() => handleNavigation('#members')}>
-                <People sx={{ mr: 1 }} />
-                Members
-              </MenuItem>
-              <MenuItem onClick={() => handleNavigation('#meetings')}>
-                <Event sx={{ mr: 1 }} />
-                Meetings
-              </MenuItem>
-              <MenuItem onClick={() => handleNavigation('#loans')}>
-                <AccountBalance sx={{ mr: 1 }} />
-                Loans
-              </MenuItem>
+              {user?.role === 'Admin' && (
+                <>
+                  <MenuItem onClick={() => handleNavigation('#members')}>
+                    <People sx={{ mr: 1 }} />
+                    Members
+                  </MenuItem>
+                  <MenuItem onClick={() => handleNavigation('#meetings')}>
+                    <Event sx={{ mr: 1 }} />
+                    Meetings
+                  </MenuItem>
+                  <MenuItem onClick={() => handleNavigation('#loans')}>
+                    <AccountBalance sx={{ mr: 1 }} />
+                    Loans
+                  </MenuItem>
+                </>
+              )}
               <MenuItem onClick={() => handleNavigation('#profile')}>
                 <AccountCircle sx={{ mr: 1 }} />
                 Profile
@@ -130,27 +134,31 @@ const Navbar: React.FC = () => {
               >
                 Dashboard
               </Button>
-              <Button
-                color="inherit"
-                onClick={() => handleNavigation('#members')}
-                startIcon={<People />}
-              >
-                Members
-              </Button>
-              <Button
-                color="inherit"
-                onClick={() => handleNavigation('#meetings')}
-                startIcon={<Event />}
-              >
-                Meetings
-              </Button>
-              <Button
-                color="inherit"
-                onClick={() => handleNavigation('#loans')}
-                startIcon={<AccountBalance />}
-              >
-                Loans
-              </Button>
+              {user?.role === 'Admin' && (
+                <>
+                  <Button
+                    color="inherit"
+                    onClick={() => handleNavigation('#members')}
+                    startIcon={<People />}
+                  >
+                    Members
+                  </Button>
+                  <Button
+                    color="inherit"
+                    onClick={() => handleNavigation('#meetings')}
+                    startIcon={<Event />}
+                  >
+                    Meetings
+                  </Button>
+                  <Button
+                    color="inherit"
+                    onClick={() => handleNavigation('#loans')}
+                    startIcon={<AccountBalance />}
+                  >
+                    Loans
+                  </Button>
+                </>
+              )}
             </Box>
 
             <IconButton
@@ -162,7 +170,7 @@ const Navbar: React.FC = () => {
               color="inherit"
             >
               <Avatar sx={{ width: 32, height: 32 }}>
-                {user?.firstName?.charAt(0)?.toUpperCase() || 'U'}
+                {user?.name?.charAt(0)?.toUpperCase() || 'U'}
               </Avatar>
             </IconButton>
             <Menu
