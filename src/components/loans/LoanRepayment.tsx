@@ -29,14 +29,18 @@ interface User {
 interface Loan {
   id: number;
   userId: number;
-  user: User;
+  userName: string;
   date: string;
   dueDate: string;
   closedDate?: string;
   interestRate: number;
   amount: number;
   interestAmount: number;
+  interestReceived: number;
   status: string;
+  daysSinceIssue: number;
+  isOverdue: boolean;
+  daysOverdue: number;
 }
 
 interface LoanRepaymentProps {
@@ -60,31 +64,22 @@ const LoanRepayment: React.FC<LoanRepaymentProps> = ({ open, onClose, loan, onSa
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [calculatedInterest, setCalculatedInterest] = useState<number>(0);
 
   useEffect(() => {
     if (loan) {
+      // Set today's date as default if no closed date exists
+      const today = new Date().toISOString().split('T')[0];
       setFormData({
-        closedDate: loan.closedDate || '',
+        closedDate: loan.closedDate || today,
         amount: loan.amount,
         interestAmount: loan.interestAmount
       });
-      calculateInterest(loan.amount, loan.interestRate);
     }
   }, [loan]);
-
-  const calculateInterest = (amount: number, rate: number) => {
-    const interest = (amount * rate) / 100;
-    setCalculatedInterest(interest);
-    setFormData(prev => ({ ...prev, interestAmount: interest }));
-  };
 
   const handleAmountChange = (value: string) => {
     const amount = Number(value) || 0;
     setFormData(prev => ({ ...prev, amount }));
-    if (loan) {
-      calculateInterest(amount, loan.interestRate);
-    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -94,17 +89,15 @@ const LoanRepayment: React.FC<LoanRepaymentProps> = ({ open, onClose, loan, onSa
     setSaving(true);
     setError(null);
     try {
-      const updateData = {
+      const repaymentData = {
+        loanId: loan.id,
         userId: loan.userId,
-        date: loan.date,
-        dueDate: loan.dueDate,
-        closedDate: formData.closedDate,
-        interestRate: loan.interestRate,
-        amount: formData.amount,
-        status: 'Closed'
+        loanAmount: formData.amount,
+        interestAmount: formData.interestAmount,
+        closedDate: formData.closedDate
       };
 
-      await apiService.put(`/api/Loan/${loan.id}`, updateData);
+      await apiService.post('/api/Loan/Repayment', repaymentData);
       onSaved();
       onClose();
     } catch (err: any) {
@@ -127,7 +120,7 @@ const LoanRepayment: React.FC<LoanRepaymentProps> = ({ open, onClose, loan, onSa
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
           <AttachMoney sx={{ color: 'primary.main' }} />
           <Typography variant="h6">
-            Loan Repayment - {loan.user?.name}
+            Loan Repayment - {loan.userName}
           </Typography>
         </Box>
       </DialogTitle>
@@ -208,7 +201,7 @@ const LoanRepayment: React.FC<LoanRepaymentProps> = ({ open, onClose, loan, onSa
                 startAdornment: <span>₹</span>,
                 inputProps: { min: 0 }
               }}
-              helperText={`Calculated interest: ₹${calculatedInterest.toLocaleString()} (${loan.interestRate}% of repayment amount)`}
+              helperText={`Loan interest amount: ₹${loan.interestAmount.toLocaleString()}`}
             />
 
             {/* Total Amount */}

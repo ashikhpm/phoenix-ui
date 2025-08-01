@@ -5,7 +5,7 @@ interface User {
   id: number;
   name: string;
   email: string;
-  role: 'Admin' | 'User';
+  role: 'Secretary' | 'Member';
 }
 
 interface AuthContextType {
@@ -107,12 +107,24 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       const token = localStorage.getItem('authToken');
       
       if (token) {
-        // If we have a token, assume user is authenticated
-        // We'll let the API calls fail naturally if the token is invalid
-        // and the response interceptor will handle clearing the token
-        console.log('Token found in localStorage, user is authenticated');
-        // Don't try to fetch user data if the endpoint doesn't exist
-        // The token will be validated on the next API call
+        try {
+          // Try to fetch user data to validate the token
+          const response = await authService.getCurrentUser();
+          setUser(response);
+          console.log('User data fetched successfully');
+        } catch (err: any) {
+          console.error('Failed to fetch user data:', err);
+          // Only clear token if it's a 401 error (unauthorized)
+          // For other errors (like network issues or endpoint not found), keep the token
+          if (err.response?.status === 401) {
+            localStorage.removeItem('authToken');
+            setUser(null);
+          } else {
+            // For other errors (404, 500, network issues), assume token is still valid
+            console.log('Non-401 error, keeping token for now. Error status:', err.response?.status);
+            // Don't clear the token for non-401 errors
+          }
+        }
       }
       
       setIsLoading(false);

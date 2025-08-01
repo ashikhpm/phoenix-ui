@@ -5,7 +5,7 @@ import { Security, ArrowBack } from '@mui/icons-material';
 
 interface RoleBasedRouteProps {
   children: React.ReactNode;
-  allowedRoles: ('Admin' | 'User')[];
+  allowedRoles: ('Secretary' | 'Member')[];
   fallbackComponent?: React.ReactNode;
 }
 
@@ -46,8 +46,10 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
     );
   }
 
-  // If no user data, show loading or error
+  // If no user data, redirect to login
   if (!user) {
+    // Redirect to login page
+    window.location.hash = '#login';
     return (
       <Container maxWidth="sm">
         <Box sx={{ 
@@ -58,8 +60,8 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
           minHeight: '60vh',
           textAlign: 'center'
         }}>
-          <Typography variant="h6" color="error">
-            User data not available
+          <Typography variant="h6" color="text.secondary">
+            Redirecting to login...
           </Typography>
         </Box>
       </Container>

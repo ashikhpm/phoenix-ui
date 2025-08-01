@@ -101,7 +101,7 @@ export class AuthService extends ApiService {
   }
 
   async getCurrentUser() {
-    return this.get<any>('/auth/me');
+    return this.get<any>('/api/User/me');
   }
 
   async refreshToken() {

@@ -34,10 +34,11 @@ import {
   TablePagination,
   DialogContentText,
 } from '@mui/material';
-import { Add, Edit, Delete, Person, AccountBalance, PersonAdd, AttachMoney, Schedule, TrendingUp, Payment } from '@mui/icons-material';
+import { Add, Edit, Delete, Person, AccountBalance, PersonAdd, AttachMoney, Schedule, TrendingUp, Payment, Assignment } from '@mui/icons-material';
 import { apiService } from '../../services/api';
 import AuthenticatedLayout from '../layout/AuthenticatedLayout';
 import LoanRepayment from './LoanRepayment';
+import LoanRequests from './LoanRequests';
 
 interface User {
   id: number;
@@ -50,14 +51,25 @@ interface User {
 interface Loan {
   id: number;
   userId: number;
-  user: User;
+  userName: string;
   date: string;
   dueDate: string;
   closedDate?: string;
+  loanTypeId?: number;
   interestRate: number;
   amount: number;
   interestAmount: number;
+  interestReceived: number;
   status: string;
+  daysSinceIssue: number;
+  isOverdue: boolean;
+  daysOverdue: number;
+}
+
+interface LoanType {
+  id: number;
+  loanTypeName: string;
+  interestRate: number;
 }
 
 const emptyLoan: Partial<Loan> = {
@@ -72,6 +84,7 @@ const emptyLoan: Partial<Loan> = {
 };
 
 const LoanManager: React.FC = () => {
+  const theme = useTheme();
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,6 +97,7 @@ const LoanManager: React.FC = () => {
   const [repaymentDialogOpen, setRepaymentDialogOpen] = useState(false);
   const [selectedLoanForRepayment, setSelectedLoanForRepayment] = useState<Loan | null>(null);
   const [users, setUsers] = useState<User[]>([]);
+  const [loanTypes, setLoanTypes] = useState<LoanType[]>([]);
 
   // Fetch loans
   const fetchLoans = async () => {
@@ -109,9 +123,25 @@ const LoanManager: React.FC = () => {
     }
   };
 
+  // Fetch loan types for dropdown
+  const fetchLoanTypes = async () => {
+    try {
+      const response = await apiService.get<LoanType[]>('/api/Loan/types');
+      setLoanTypes(response);
+    } catch (err) {
+      console.error('Failed to fetch loan types:', err);
+      // Set default loan types if API fails
+      setLoanTypes([
+        { id: 1, loanTypeName: 'Marriage Loan', interestRate: 1.5 },
+        { id: 2, loanTypeName: 'Personal Loan', interestRate: 2.5 },
+      ]);
+    }
+  };
+
   useEffect(() => {
     fetchLoans();
     fetchUsers();
+    fetchLoanTypes();
   }, []);
 
   const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
@@ -158,10 +188,10 @@ const LoanManager: React.FC = () => {
         userId: formData.userId,
         date: formData.date,
         dueDate: formData.dueDate,
-        closedDate: formData.closedDate || null,
-        interestRate: formData.interestRate,
+        closedDate: null, // Always null for new loans
+        loanTypeId: formData.loanTypeId || 0,
         amount: formData.amount,
-        status: formData.status
+        status: formData.status || 'Active'
       };
 
       if (selectedLoan?.id) {
@@ -223,6 +253,11 @@ const LoanManager: React.FC = () => {
                 icon={<PersonAdd />} 
                 iconPosition="start"
               />
+              <Tab 
+                label="Loan Requests" 
+                icon={<Assignment />} 
+                iconPosition="start"
+              />
             </Tabs>
           </Box>
           
@@ -245,11 +280,18 @@ const LoanManager: React.FC = () => {
               <LoanForm 
                 loan={selectedLoan}
                 users={users}
+                loanTypes={loanTypes}
                 onSaved={handleFormSaved}
                 onCancelEdit={handleCancelEdit}
                 saving={saving}
                 onSave={handleSave}
               />
+            )}
+          </Box>
+          
+          <Box role="tabpanel" hidden={activeTab !== 2}>
+            {activeTab === 2 && (
+              <LoanRequests />
             )}
           </Box>
         </Box>
@@ -275,6 +317,8 @@ const LoanManager: React.FC = () => {
           loan={selectedLoanForRepayment}
           onSaved={handleRepaymentSaved}
         />
+
+
       </Box>
     </AuthenticatedLayout>
   );
@@ -298,16 +342,11 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
 
-  const getDueDateColor = (dueDate: string) => {
-    const today = new Date();
-    const due = new Date(dueDate);
-    const oneWeekFromNow = new Date();
-    oneWeekFromNow.setDate(today.getDate() + 7);
-    
-    if (due < today) {
+  const getDueDateColor = (loan: Loan) => {
+    if (loan.isOverdue) {
       return 'error.main'; // Red for overdue
-    } else if (due <= oneWeekFromNow) {
-      return 'success.main'; // Green for due within 1 week
+    } else if (loan.daysOverdue > 0) {
+      return 'warning.main'; // Orange for approaching due date
     } else {
       return 'text.primary'; // Default color
     }
@@ -442,14 +481,20 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
               sx={{ 
                 borderRadius: 2,
                 border: `1px solid ${theme.palette.divider}`,
-                overflow: 'hidden',
+                overflow: 'auto',
+                maxWidth: '100%',
               }}
             >
               <Table sx={{ 
+                minWidth: 1200,
                 '& th': { 
                   backgroundColor: theme.palette.primary.main,
                   color: 'white',
                   fontWeight: 600,
+                  whiteSpace: 'nowrap',
+                },
+                '& td': {
+                  whiteSpace: 'nowrap',
                 },
                 '& tr:hover': {
                   backgroundColor: theme.palette.action.hover,
@@ -506,11 +551,23 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                     </TableCell>
                     <TableCell sx={{ py: 3 }}>
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Payment sx={{ mr: 2, fontSize: 24 }} />
+                        Interest Received
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ py: 3 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <Schedule sx={{ mr: 2, fontSize: 24 }} />
+                        Days Since Issue
+                      </Box>
+                    </TableCell>
+                    <TableCell sx={{ py: 3 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <AccountBalance sx={{ mr: 2, fontSize: 24 }} />
                         Status
                       </Box>
                     </TableCell>
-                    <TableCell align="center" sx={{ py: 3 }}>Actions</TableCell>
+                    <TableCell align="center" sx={{ py: 3, minWidth: 200 }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
@@ -533,10 +590,10 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                           <Person fontSize="small" />
                           <Box>
                             <Typography variant="body1" fontWeight="600" sx={{ color: theme.palette.primary.main }}>
-                              {loan.user?.name}
+                              {loan.userName}
                             </Typography>
                             <Typography variant="body2" color="text.secondary">
-                              {loan.user?.email}
+                              User ID: {loan.userId}
                             </Typography>
                           </Box>
                         </Box>
@@ -549,8 +606,8 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                       <TableCell sx={{ py: 3 }}>
                         <Typography 
                           sx={{ 
-                            color: loan.dueDate ? getDueDateColor(loan.dueDate) : 'text.primary',
-                            fontWeight: loan.dueDate && (new Date(loan.dueDate) < new Date() || new Date(loan.dueDate) <= new Date(Date.now() + 7 * 24 * 60 * 60 * 1000)) ? 600 : 400
+                            color: getDueDateColor(loan),
+                            fontWeight: loan.isOverdue || loan.daysOverdue > 0 ? 600 : 400
                           }}
                         >
                           {loan.dueDate ? new Date(loan.dueDate).toLocaleDateString() : ''}
@@ -577,18 +634,38 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                         </Typography>
                       </TableCell>
                       <TableCell sx={{ py: 3 }}>
-                        <Chip 
-                          label={loan.status}
-                          color={
-                            loan.status === 'Ongoing' ? 'info' : 
-                            loan.status === 'Due date exceeded' ? 'error' : 
-                            'success'
-                          }
-                          size="small"
-                          variant="outlined"
-                        />
+                        <Typography variant="body2" fontWeight={600}>
+                          ₹{loan.interestReceived.toLocaleString()}
+                        </Typography>
                       </TableCell>
-                      <TableCell align="center" sx={{ py: 3 }}>
+                      <TableCell sx={{ py: 3 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {loan.daysSinceIssue} days
+                        </Typography>
+                      </TableCell>
+                      <TableCell sx={{ py: 3 }}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                          <Chip 
+                            label={loan.status}
+                            color={
+                              loan.status === 'Ongoing' ? 'info' : 
+                              loan.status === 'Due date exceeded' ? 'error' : 
+                              'success'
+                            }
+                            size="small"
+                            variant="outlined"
+                          />
+                          {loan.isOverdue && (
+                            <Chip 
+                              label={`${loan.daysOverdue} days overdue`}
+                              color="error"
+                              size="small"
+                              variant="filled"
+                            />
+                          )}
+                        </Box>
+                      </TableCell>
+                      <TableCell align="center" sx={{ py: 3, minWidth: 200 }}>
                         <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
                           <IconButton 
                             color="primary" 
@@ -607,13 +684,19 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                           <IconButton 
                             color="success" 
                             onClick={() => onRepayment(loan)}
+                            disabled={loan.status.toLowerCase() === 'closed'}
                             sx={{ 
-                              backgroundColor: theme.palette.success.light + '20',
+                              backgroundColor: loan.status.toLowerCase() === 'closed' 
+                                ? theme.palette.grey[300] 
+                                : theme.palette.success.light + '20',
                               '&:hover': {
-                                backgroundColor: theme.palette.success.light + '40',
-                                transform: 'scale(1.1)',
+                                backgroundColor: loan.status.toLowerCase() === 'closed'
+                                  ? theme.palette.grey[300]
+                                  : theme.palette.success.light + '40',
+                                transform: loan.status.toLowerCase() === 'closed' ? 'none' : 'scale(1.1)',
                               },
                               transition: 'all 0.2s ease-in-out',
+                              opacity: loan.status.toLowerCase() === 'closed' ? 0.5 : 1,
                             }}
                           >
                             <Payment />
@@ -708,22 +791,77 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
 interface LoanFormProps {
   loan: Loan | null;
   users: User[];
+  loanTypes: LoanType[];
   onSaved: () => void;
   onCancelEdit: () => void;
   saving: boolean;
   onSave: (formData: Partial<Loan>) => void;
 }
 
-const LoanForm: React.FC<LoanFormProps> = ({ loan, users, onSaved, onCancelEdit, saving, onSave }) => {
+const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, onCancelEdit, saving, onSave }) => {
   const [formData, setFormData] = useState<Partial<Loan>>(loan || emptyLoan);
+  const [selectedLoanTypeId, setSelectedLoanTypeId] = useState<number | ''>('');
+  const theme = useTheme();
 
   useEffect(() => {
     setFormData(loan || emptyLoan);
+    // Reset loan type selection when loan changes
+    setSelectedLoanTypeId('');
   }, [loan]);
+
+  // Handle loan type selection
+  const handleLoanTypeChange = (loanTypeId: number) => {
+    setSelectedLoanTypeId(loanTypeId);
+    const selectedType = loanTypes.find(lt => lt.id === loanTypeId);
+    if (selectedType) {
+      // Calculate due date based on selected date
+      const selectedDate = formData.date ? new Date(formData.date) : new Date();
+      let dueDate = new Date(selectedDate);
+      
+      if (selectedType.loanTypeName === 'Marriage Loan') {
+        dueDate.setMonth(dueDate.getMonth() + 6); // 6 months
+      } else if (selectedType.loanTypeName === 'Personal Loan') {
+        dueDate.setMonth(dueDate.getMonth() + 3); // 3 months
+      } else {
+        dueDate.setMonth(dueDate.getMonth() + 1); // Default 1 month
+      }
+      
+      setFormData({ 
+        ...formData, 
+        interestRate: selectedType.interestRate,
+        dueDate: dueDate.toISOString().split('T')[0]
+      });
+    }
+  };
+
+  // Calculate expected interest amount
+  const calculateInterestAmount = () => {
+    if (!selectedLoanType || !formData.amount || !formData.dueDate) return 0;
+    
+    const amount = parseFloat(formData.amount.toString());
+    const monthlyInterestRate = selectedLoanType.interestRate / 100; // Convert percentage to decimal
+    const startDate = new Date();
+    const dueDate = new Date(formData.dueDate);
+    
+    // Calculate months between start date and due date
+    const monthsDiff = (dueDate.getFullYear() - startDate.getFullYear()) * 12 + 
+                      (dueDate.getMonth() - startDate.getMonth());
+    
+    // Calculate total interest (monthly interest rate * number of months * principal amount)
+    const totalInterest = amount * monthlyInterestRate * monthsDiff;
+    
+    return totalInterest;
+  };
+
+  const selectedLoanType = loanTypes.find(lt => lt.id === selectedLoanTypeId);
+  const expectedInterestAmount = calculateInterestAmount();
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    onSave(formData);
+    onSave({
+      ...formData,
+      loanTypeId: selectedLoanTypeId as number
+    });
   };
 
   return (
@@ -748,11 +886,59 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, onSaved, onCancelEdit,
           </Select>
         </FormControl>
 
+        <FormControl fullWidth required>
+          <InputLabel>Loan Type</InputLabel>
+          <Select
+            value={selectedLoanTypeId}
+            onChange={e => handleLoanTypeChange(Number(e.target.value))}
+            label="Loan Type"
+          >
+            {loanTypes.map((loanType) => (
+              <MenuItem key={loanType.id} value={loanType.id}>
+                <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+                  <Typography variant="body1" fontWeight={600}>
+                    {loanType.loanTypeName}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Interest Rate: {loanType.interestRate}%
+                  </Typography>
+                </Box>
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
+
         <TextField
           label="Date"
           type="date"
           value={formData.date ? formData.date.slice(0, 10) : ''}
-          onChange={e => setFormData({ ...formData, date: e.target.value })}
+          onChange={e => {
+            const newDate = e.target.value;
+            setFormData({ ...formData, date: newDate });
+            
+            // Recalculate due date if loan type is selected
+            if (selectedLoanTypeId) {
+              const selectedType = loanTypes.find(lt => lt.id === selectedLoanTypeId);
+              if (selectedType && newDate) {
+                const selectedDate = new Date(newDate);
+                let dueDate = new Date(selectedDate);
+                
+                if (selectedType.loanTypeName === 'Marriage Loan') {
+                  dueDate.setMonth(dueDate.getMonth() + 6); // 6 months
+                } else if (selectedType.loanTypeName === 'Personal Loan') {
+                  dueDate.setMonth(dueDate.getMonth() + 3); // 3 months
+                } else {
+                  dueDate.setMonth(dueDate.getMonth() + 1); // Default 1 month
+                }
+                
+                setFormData(prev => ({ 
+                  ...prev, 
+                  date: newDate,
+                  dueDate: dueDate.toISOString().split('T')[0]
+                }));
+              }
+            }
+          }}
           fullWidth
           InputLabelProps={{ shrink: true }}
           required
@@ -766,17 +952,11 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, onSaved, onCancelEdit,
           fullWidth
           InputLabelProps={{ shrink: true }}
           required
+          disabled={selectedLoanTypeId !== ''}
+          helperText={selectedLoanTypeId !== '' ? "Auto-calculated based on loan type" : "Select a loan type to auto-calculate due date"}
         />
 
-        <TextField
-          label="Closed Date"
-          type="date"
-          value={formData.closedDate ? formData.closedDate.slice(0, 10) : ''}
-          onChange={e => setFormData({ ...formData, closedDate: e.target.value })}
-          fullWidth
-          InputLabelProps={{ shrink: true }}
-          helperText="Leave empty if loan is not closed yet"
-        />
+
 
         <TextField
           label="Interest Rate (%)"
@@ -785,6 +965,11 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, onSaved, onCancelEdit,
           onChange={e => setFormData({ ...formData, interestRate: Number(e.target.value) })}
           fullWidth
           required
+          InputProps={{ 
+            readOnly: selectedLoanTypeId !== '',
+            startAdornment: <span>%</span>
+          }}
+          helperText={selectedLoanTypeId !== '' ? "Auto-filled based on selected loan type" : "Enter interest rate or select a loan type above"}
         />
 
         <TextField
@@ -809,6 +994,55 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, onSaved, onCancelEdit,
             <MenuItem value="Closed">Closed</MenuItem>
           </Select>
         </FormControl>
+
+        {/* Summary Section */}
+        {selectedLoanType && formData.amount && formData.dueDate && (
+          <Box sx={{ 
+            p: 2, 
+            backgroundColor: theme.palette.grey[50], 
+            borderRadius: 2,
+            border: `1px solid ${theme.palette.divider}`
+          }}>
+            <Typography variant="h6" gutterBottom sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+              <AccountBalance color="primary" />
+              Loan Summary
+            </Typography>
+            <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2 }}>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Loan Type</Typography>
+                <Typography variant="body1" fontWeight={600}>{selectedLoanType.loanTypeName}</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Interest Rate</Typography>
+                <Typography variant="body1" fontWeight={600}>{selectedLoanType.interestRate}% per month</Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Amount</Typography>
+                <Typography variant="body1" fontWeight={600} color="success.main">
+                  ₹{formData.amount.toLocaleString()}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Due Date</Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {formData.dueDate ? new Date(formData.dueDate).toLocaleDateString() : ''}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Expected Interest</Typography>
+                <Typography variant="body1" fontWeight={600} color="warning.main">
+                  ₹{expectedInterestAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Typography>
+              </Box>
+              <Box>
+                <Typography variant="body2" color="text.secondary">Total Repayment</Typography>
+                <Typography variant="body1" fontWeight={600} color="info.main">
+                  ₹{(formData.amount + expectedInterestAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </Typography>
+              </Box>
+            </Box>
+          </Box>
+        )}
 
         <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
           <Button 

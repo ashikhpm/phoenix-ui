@@ -19,7 +19,15 @@ import {
   CircularProgress,
   Alert,
   IconButton,
-  useTheme
+  useTheme,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Radio,
+  RadioGroup,
+  FormControlLabel,
+  FormLabel
 } from '@mui/material';
 import {
   AccountCircle,
@@ -32,8 +40,12 @@ import {
   Payment,
   Visibility,
   Warning,
-  AccountBalance
+  AccountBalance,
+  Add,
+  ThumbUp,
+  ThumbDown
 } from '@mui/icons-material';
+import LoanRequestForm from '../loans/LoanRequestForm';
 
 interface Meeting {
   id: number;
@@ -68,6 +80,18 @@ interface LoansDueResponse {
   upcomingLoans: OverdueLoan[];
 }
 
+interface LoanRequest {
+  id: number;
+  userId: number;
+  userName: string;
+  date: string;
+  dueDate: string;
+  interestRate: number;
+  amount: number;
+  status: string;
+  reason?: string;
+}
+
 const UserDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const theme = useTheme();
@@ -88,6 +112,18 @@ const UserDashboard: React.FC = () => {
   const [upcomingLoans, setUpcomingLoans] = useState<OverdueLoan[]>([]);
   const [loansLoading, setLoansLoading] = useState(false);
   const [loansError, setLoansError] = useState<string | null>(null);
+  
+  // Loan request form state
+  const [loanRequestDialogOpen, setLoanRequestDialogOpen] = useState(false);
+  
+  // Loan requests state
+  const [loanRequests, setLoanRequests] = useState<LoanRequest[]>([]);
+  const [loanRequestsLoading, setLoanRequestsLoading] = useState(false);
+  const [loanRequestsError, setLoanRequestsError] = useState<string | null>(null);
+  const [actionDialogOpen, setActionDialogOpen] = useState(false);
+  const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
+  const [action, setAction] = useState<string>('');
+  const [saving, setSaving] = useState(false);
   
   // Set default dates to current month start to today
   const getDefaultDates = () => {
@@ -116,6 +152,63 @@ const UserDashboard: React.FC = () => {
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleLoanRequestClick = () => {
+    setLoanRequestDialogOpen(true);
+  };
+
+  const handleLoanRequestClose = () => {
+    setLoanRequestDialogOpen(false);
+  };
+
+  const handleLoanRequestSuccess = () => {
+    // Refresh the loan requests data after successful submission
+    fetchLoanRequests();
+  };
+
+  // Fetch loan requests
+  const fetchLoanRequests = async () => {
+    setLoanRequestsLoading(true);
+    setLoanRequestsError(null);
+    try {
+      const response = await apiService.get<LoanRequest[]>('/api/dashboard/loan-requests');
+      setLoanRequests(response);
+    } catch (err: any) {
+      setLoanRequestsError(err.response?.data?.message || 'Failed to fetch loan requests.');
+    } finally {
+      setLoanRequestsLoading(false);
+    }
+  };
+
+  const handleActionClick = (request: LoanRequest) => {
+    setSelectedRequest(request);
+    setAction('');
+    setActionDialogOpen(true);
+  };
+
+  const handleActionClose = () => {
+    setActionDialogOpen(false);
+    setSelectedRequest(null);
+    setAction('');
+  };
+
+  const handleActionSubmit = async () => {
+    if (!selectedRequest || !action) return;
+
+    setSaving(true);
+    setLoanRequestsError(null);
+    try {
+      await apiService.put(`/api/Dashboard/loan-requests/${selectedRequest.id}/action`, {
+        action: action
+      });
+      handleActionClose();
+      fetchLoanRequests(); // Refresh the list
+    } catch (err: any) {
+      setLoanRequestsError(err.response?.data?.message || 'Failed to update loan request.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const fetchMeetings = async () => {
@@ -179,6 +272,7 @@ const UserDashboard: React.FC = () => {
   useEffect(() => {
     fetchMeetings();
     fetchOverdueLoans();
+    fetchLoanRequests();
   }, [page, pageSize, startDate, endDate]);
 
   const formatDate = (dateString: string) => {
@@ -204,9 +298,35 @@ const UserDashboard: React.FC = () => {
   return (
     <AuthenticatedLayout>
       <Box sx={{ p: 3 }}>
-        <Typography variant="h4" component="h1" gutterBottom>
-          Dashboard
-        </Typography>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" component="h1">
+            Dashboard
+          </Typography>
+          
+                  {/* Loan Request Button - Only show for non-secretary users */}
+        {user && user.role !== 'Secretary' && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<Add />}
+              onClick={handleLoanRequestClick}
+              sx={{
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+                px: 3,
+                py: 1,
+                '&:hover': {
+                  transform: 'translateY(-2px)',
+                  boxShadow: theme.shadows[8],
+                },
+                transition: 'all 0.2s ease-in-out',
+              }}
+            >
+              Request Loan
+            </Button>
+          )}
+        </Box>
         
                   {/* Loans Due Section */}
           <Box sx={{ mt: 6 }}>
@@ -409,6 +529,141 @@ const UserDashboard: React.FC = () => {
               </>
             )}
           </Box>
+        
+        {/* Loan Requests Section */}
+        <Box sx={{ mt: 6 }}>
+          <Typography variant="h5" component="h2" gutterBottom>
+            Loan Requests
+          </Typography>
+          
+          {loanRequestsError && (
+            <Alert severity="error" sx={{ mb: 3 }}>
+              {loanRequestsError}
+            </Alert>
+          )}
+          
+          {loanRequestsLoading ? (
+            <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+              <CircularProgress size={60} />
+            </Box>
+          ) : (
+            <>
+              {loanRequests.length === 0 ? (
+                <Box sx={{ textAlign: 'center', py: 4 }}>
+                  <AccountBalance sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+                  <Typography variant="h6" color="text.secondary" gutterBottom>
+                    No loan requests
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    There are currently no loan requests to review.
+                  </Typography>
+                </Box>
+              ) : (
+                <Card>
+                  <CardContent>
+                    <Box sx={{ overflowX: 'auto' }}>
+                      <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
+                        <Box component="thead">
+                          <Box component="tr" sx={{ borderBottom: 1, borderColor: 'divider' }}>
+                            {user?.role === 'Secretary' && (
+                              <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Member</Box>
+                            )}
+                            <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Request Date</Box>
+                            <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Due Date</Box>
+                            <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Amount</Box>
+                            <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Interest Rate</Box>
+                            <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Status</Box>
+                            {user?.role === 'Secretary' && (
+                              <Box component="th" sx={{ p: 2, textAlign: 'center', fontWeight: 600 }}>Actions</Box>
+                            )}
+                          </Box>
+                        </Box>
+                        <Box component="tbody">
+                          {loanRequests.map((request) => (
+                            <Box 
+                              key={request.id} 
+                              component="tr" 
+                              sx={{ 
+                                borderBottom: 1, 
+                                borderColor: 'divider',
+                                '&:hover': { backgroundColor: 'action.hover' }
+                              }}
+                            >
+                              {user?.role === 'Secretary' && (
+                                <Box component="td" sx={{ p: 2 }}>
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    <AccountBalance sx={{ fontSize: 16, color: 'text.secondary' }} />
+                                    <Typography variant="body2" fontWeight={600}>
+                                      {request.userName}
+                                    </Typography>
+                                  </Box>
+                                </Box>
+                              )}
+                              <Box component="td" sx={{ p: 2 }}>
+                                <Typography variant="body2">
+                                  {request.date ? new Date(request.date).toLocaleDateString() : ''}
+                                </Typography>
+                              </Box>
+                              <Box component="td" sx={{ p: 2 }}>
+                                <Typography variant="body2">
+                                  {request.dueDate ? new Date(request.dueDate).toLocaleDateString() : ''}
+                                </Typography>
+                              </Box>
+                              <Box component="td" sx={{ p: 2 }}>
+                                <Typography variant="body2" fontWeight={600}>
+                                  ₹{request.amount.toLocaleString()}
+                                </Typography>
+                              </Box>
+                              <Box component="td" sx={{ p: 2 }}>
+                                <Typography variant="body2">
+                                  {request.interestRate}%
+                                </Typography>
+                              </Box>
+                              <Box component="td" sx={{ p: 2 }}>
+                                <Chip 
+                                  label={request.status}
+                                  color={
+                                    request.status.toLowerCase() === 'accepted' ? 'success' : 
+                                    request.status.toLowerCase() === 'rejected' ? 'error' : 
+                                    request.status.toLowerCase() === 'requested' ? 'warning' : 
+                                    'default'
+                                  }
+                                  size="small"
+                                />
+                              </Box>
+                              {user?.role === 'Secretary' && (
+                                <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
+                                  <Button
+                                    variant="contained"
+                                    color="primary"
+                                    size="small"
+                                    onClick={() => handleActionClick(request)}
+                                    startIcon={<Add />}
+                                    sx={{
+                                      borderRadius: 2,
+                                      textTransform: 'none',
+                                      fontWeight: 600,
+                                      '&:hover': {
+                                        transform: 'scale(1.05)',
+                                      },
+                                      transition: 'all 0.2s ease-in-out',
+                                    }}
+                                  >
+                                    Review
+                                  </Button>
+                                </Box>
+                              )}
+                            </Box>
+                          ))}
+                        </Box>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              )}
+            </>
+          )}
+        </Box>
         
         {/* Meeting List Section */}
         <Box sx={{ mt: 6 }}>
@@ -628,6 +883,112 @@ const UserDashboard: React.FC = () => {
           )}
         </Box>
       </Box>
+
+      {/* Loan Request Form Dialog */}
+      <LoanRequestForm
+        open={loanRequestDialogOpen}
+        onClose={handleLoanRequestClose}
+        onSuccess={handleLoanRequestSuccess}
+      />
+
+      {/* Action Dialog */}
+      <Dialog 
+        open={actionDialogOpen} 
+        onClose={handleActionClose}
+        PaperProps={{
+          sx: {
+            borderRadius: 3,
+            minWidth: 500,
+          }
+        }}
+      >
+        <DialogTitle sx={{ 
+          backgroundColor: theme.palette.primary.main,
+          color: 'white',
+          fontWeight: 600,
+        }}>
+          Review Loan Request
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          {selectedRequest && (
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Request Details
+              </Typography>
+              <Box sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 2, mb: 2 }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Member</Typography>
+                  <Typography variant="body1" fontWeight={600}>{selectedRequest.userName}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Amount</Typography>
+                  <Typography variant="body1" fontWeight={600}>₹{selectedRequest.amount.toLocaleString()}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Interest Rate</Typography>
+                  <Typography variant="body1">{selectedRequest.interestRate}%</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Due Date</Typography>
+                  <Typography variant="body1">
+                    {selectedRequest.dueDate ? new Date(selectedRequest.dueDate).toLocaleDateString() : ''}
+                  </Typography>
+                </Box>
+              </Box>
+            </Box>
+          )}
+          
+          <FormControl component="fieldset" fullWidth>
+            <FormLabel component="legend" sx={{ fontWeight: 600, mb: 2 }}>
+              Select Action
+            </FormLabel>
+            <RadioGroup
+              value={action}
+              onChange={(e) => setAction(e.target.value)}
+              sx={{ gap: 2 }}
+            >
+              <FormControlLabel
+                value="Accepted"
+                control={<Radio color="success" />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ThumbUp color="success" />
+                    <Typography>Accept Request</Typography>
+                  </Box>
+                }
+              />
+              <FormControlLabel
+                value="Rejected"
+                control={<Radio color="error" />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                    <ThumbDown color="error" />
+                    <Typography>Reject Request</Typography>
+                  </Box>
+                }
+              />
+            </RadioGroup>
+          </FormControl>
+        </DialogContent>
+        <DialogActions sx={{ p: 3 }}>
+          <Button 
+            onClick={handleActionClose} 
+            variant="outlined"
+            disabled={saving}
+            sx={{ borderRadius: 2 }}
+          >
+            Cancel
+          </Button>
+          <Button 
+            onClick={handleActionSubmit} 
+            variant="contained"
+            disabled={!action || saving}
+            sx={{ borderRadius: 2 }}
+          >
+            {saving ? <CircularProgress size={20} /> : 'Save Decision'}
+          </Button>
+        </DialogActions>
+      </Dialog>
     </AuthenticatedLayout>
   );
 };

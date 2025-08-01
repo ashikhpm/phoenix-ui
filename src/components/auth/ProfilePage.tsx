@@ -29,7 +29,7 @@ const ProfilePage: React.FC = () => {
   }
 
   const getRoleColor = (role: string) => {
-    return role === 'Admin' ? 'error' : 'primary';
+    return role === 'Secretary' ? 'error' : 'primary';
   };
 
   return (
@@ -110,7 +110,7 @@ const ProfilePage: React.FC = () => {
                       <strong>Role:</strong> {user.role}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {user.role === 'Admin' 
+                      {user.role === 'Secretary' 
                         ? 'You have full access to all features and can manage all data.'
                         : 'You have limited access to dashboard features only.'
                       }

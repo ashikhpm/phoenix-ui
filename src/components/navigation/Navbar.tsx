@@ -94,7 +94,7 @@ const Navbar: React.FC = () => {
                 <Dashboard sx={{ mr: 1 }} />
                 Dashboard
               </MenuItem>
-              {user?.role === 'Admin' && (
+              {user?.role === 'Secretary' && (
                 <>
                   <MenuItem onClick={() => handleNavigation('#members')}>
                     <People sx={{ mr: 1 }} />
@@ -134,7 +134,7 @@ const Navbar: React.FC = () => {
               >
                 Dashboard
               </Button>
-              {user?.role === 'Admin' && (
+              {user?.role === 'Secretary' && (
                 <>
                   <Button
                     color="inherit"

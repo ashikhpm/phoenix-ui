@@ -91,19 +91,19 @@ const AppRouter: React.FC = () => {
         return <UserDashboard />;
       case 'members':
         return (
-          <RoleBasedRoute allowedRoles={['Admin']}>
+          <RoleBasedRoute allowedRoles={['Secretary']}>
             <MemberPage />
           </RoleBasedRoute>
         );
       case 'meetings':
         return (
-          <RoleBasedRoute allowedRoles={['Admin']}>
+          <RoleBasedRoute allowedRoles={['Secretary']}>
             <MeetingPage />
           </RoleBasedRoute>
         );
       case 'meeting-details':
         return (
-          <RoleBasedRoute allowedRoles={['Admin']}>
+          <RoleBasedRoute allowedRoles={['Secretary']}>
             <MeetingDetailsPage onBack={() => window.location.hash = '#meetings'} />
           </RoleBasedRoute>
         );
@@ -113,7 +113,7 @@ const AppRouter: React.FC = () => {
         return <PlaceholderPage title="Settings" description="Settings page coming soon..." />;
       case 'loans':
         return (
-          <RoleBasedRoute allowedRoles={['Admin']}>
+          <RoleBasedRoute allowedRoles={['Secretary']}>
             <LoanManager />
           </RoleBasedRoute>
         );
