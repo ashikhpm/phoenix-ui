@@ -559,7 +559,7 @@ const MeetingList: React.FC<MeetingListProps> = ({ onEdit, refreshKey }) => {
                     <Box>
                       <Typography variant="body2" color="text.secondary">Attendance</Typography>
                       <Typography variant="h6" color="success.main">
-                        {meetingSummary.presentAttendanceCount}/{meetingSummary.totalAttendanceCount} ({meetingSummary.attendancePercentage.toFixed(1)}%)
+                        {meetingSummary.presentAttendanceCount}/{meetingSummary.totalAttendanceCount} ({(meetingSummary.attendancePercentage || 0).toFixed(1)}%)
                       </Typography>
                     </Box>
                   </Box>

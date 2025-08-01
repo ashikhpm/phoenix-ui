@@ -1,4 +1,6 @@
 import axios, { AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
+import { API_ENDPOINTS } from '../constants';
+import { User } from '../types/common';
 
 // API configuration
 const API_BASE_URL = 'http://localhost:5276';
@@ -83,7 +85,7 @@ export class ApiService {
 // Auth-specific API service
 export class AuthService extends ApiService {
   async login(credentials: { username: string; password: string }) {
-    return this.post<{ token: string; user: any }>('/api/User/login', credentials);
+    return this.post<{ token: string; user: any }>(API_ENDPOINTS.AUTH.LOGIN, credentials);
   }
 
   async register(userData: { 
@@ -97,11 +99,11 @@ export class AuthService extends ApiService {
   }
 
   async logout() {
-    return this.post('/auth/logout');
+    return this.post(API_ENDPOINTS.AUTH.LOGOUT);
   }
 
   async getCurrentUser() {
-    return this.get<any>('/api/User/me');
+    return this.get<User>(API_ENDPOINTS.AUTH.ME);
   }
 
   async refreshToken() {

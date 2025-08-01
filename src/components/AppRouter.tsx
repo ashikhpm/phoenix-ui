@@ -112,11 +112,7 @@ const AppRouter: React.FC = () => {
       case 'settings':
         return <PlaceholderPage title="Settings" description="Settings page coming soon..." />;
       case 'loans':
-        return (
-          <RoleBasedRoute allowedRoles={['Secretary']}>
-            <LoanManager />
-          </RoleBasedRoute>
-        );
+        return <LoanManager />;
       default:
         return <UserDashboard />;
     }

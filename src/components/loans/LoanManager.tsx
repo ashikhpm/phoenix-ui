@@ -36,6 +36,7 @@ import {
 } from '@mui/material';
 import { Add, Edit, Delete, Person, AccountBalance, PersonAdd, AttachMoney, Schedule, TrendingUp, Payment, Assignment } from '@mui/icons-material';
 import { apiService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 import AuthenticatedLayout from '../layout/AuthenticatedLayout';
 import LoanRepayment from './LoanRepayment';
 import LoanRequests from './LoanRequests';
@@ -55,7 +56,9 @@ interface Loan {
   date: string;
   dueDate: string;
   closedDate?: string;
-  loanTypeId?: number;
+  loanTypeId: number;
+  loanTypeName: string;
+  loanTerm: number; // in months
   interestRate: number;
   amount: number;
   interestAmount: number;
@@ -77,6 +80,9 @@ const emptyLoan: Partial<Loan> = {
   date: '',
   dueDate: '',
   closedDate: '',
+  loanTypeId: 0,
+  loanTypeName: '',
+  loanTerm: 0,
   interestRate: 0,
   amount: 0,
   interestAmount: 0,
@@ -85,6 +91,8 @@ const emptyLoan: Partial<Loan> = {
 
 const LoanManager: React.FC = () => {
   const theme = useTheme();
+  const { user } = useAuth();
+  const isSecretary = user?.role === 'Secretary';
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -190,6 +198,7 @@ const LoanManager: React.FC = () => {
         dueDate: formData.dueDate,
         closedDate: null, // Always null for new loans
         loanTypeId: formData.loanTypeId || 0,
+        loanTerm: formData.loanTerm || 0,
         amount: formData.amount,
         status: formData.status || 'Active'
       };
@@ -248,16 +257,20 @@ const LoanManager: React.FC = () => {
                 icon={<AccountBalance />} 
                 iconPosition="start"
               />
-              <Tab 
-                label={selectedLoan ? 'Edit Loan' : 'Add Loan'} 
-                icon={<PersonAdd />} 
-                iconPosition="start"
-              />
-              <Tab 
-                label="Loan Requests" 
-                icon={<Assignment />} 
-                iconPosition="start"
-              />
+              {isSecretary && (
+                <Tab 
+                  label={selectedLoan ? 'Edit Loan' : 'Add Loan'} 
+                  icon={<PersonAdd />} 
+                  iconPosition="start"
+                />
+              )}
+              {isSecretary && (
+                <Tab 
+                  label="Loan Requests" 
+                  icon={<Assignment />} 
+                  iconPosition="start"
+                />
+              )}
             </Tabs>
           </Box>
           
@@ -267,33 +280,38 @@ const LoanManager: React.FC = () => {
                 loans={loans}
                 loading={loading}
                 error={error}
-                onEdit={handleEdit}
-                onDelete={(id) => { setDeleteId(id); setDeleteDialogOpen(true); }}
+                onEdit={isSecretary ? handleEdit : undefined}
+                onDelete={isSecretary ? (id) => { setDeleteId(id); setDeleteDialogOpen(true); } : undefined}
                 onRepayment={handleRepayment}
                 refreshKey={refreshKey}
+                isSecretary={isSecretary}
               />
             )}
           </Box>
           
-          <Box role="tabpanel" hidden={activeTab !== 1}>
-            {activeTab === 1 && (
-              <LoanForm 
-                loan={selectedLoan}
-                users={users}
-                loanTypes={loanTypes}
-                onSaved={handleFormSaved}
-                onCancelEdit={handleCancelEdit}
-                saving={saving}
-                onSave={handleSave}
-              />
-            )}
-          </Box>
+          {isSecretary && (
+            <Box role="tabpanel" hidden={activeTab !== 1}>
+              {activeTab === 1 && (
+                <LoanForm 
+                  loan={selectedLoan}
+                  users={users}
+                  loanTypes={loanTypes}
+                  onSaved={handleFormSaved}
+                  onCancelEdit={handleCancelEdit}
+                  saving={saving}
+                  onSave={handleSave}
+                />
+              )}
+            </Box>
+          )}
           
-          <Box role="tabpanel" hidden={activeTab !== 2}>
-            {activeTab === 2 && (
-              <LoanRequests />
-            )}
-          </Box>
+          {isSecretary && (
+            <Box role="tabpanel" hidden={activeTab !== 2}>
+              {activeTab === 2 && (
+                <LoanRequests />
+              )}
+            </Box>
+          )}
         </Box>
 
         {/* Delete Confirmation Dialog */}
@@ -329,13 +347,14 @@ interface LoanListProps {
   loans: Loan[];
   loading: boolean;
   error: string | null;
-  onEdit: (loan: Loan) => void;
-  onDelete: (id: number) => void;
+  onEdit?: (loan: Loan) => void;
+  onDelete?: (id: number) => void;
   onRepayment: (loan: Loan) => void;
   refreshKey: number;
+  isSecretary?: boolean;
 }
 
-const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDelete, onRepayment }) => {
+const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDelete, onRepayment, isSecretary = false }) => {
   const theme = useTheme();
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
@@ -362,12 +381,14 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
   };
 
   const handleDeleteClick = (id: number) => {
-    setDeleteId(id);
-    setConfirmOpen(true);
+    if (onDelete) {
+      setDeleteId(id);
+      setConfirmOpen(true);
+    }
   };
 
   const handleDeleteConfirm = async () => {
-    if (deleteId == null) return;
+    if (deleteId == null || !onDelete) return;
     try {
       onDelete(deleteId);
     } catch (err: any) {
@@ -505,99 +526,102 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                   transition: 'all 0.2s ease-in-out',
                 }
               }}>
-                <TableHead>
-                  <TableRow>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Person sx={{ mr: 2, fontSize: 24 }} />
-                        Member
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Schedule sx={{ mr: 2, fontSize: 24 }} />
-                        Date
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Schedule sx={{ mr: 2, fontSize: 24 }} />
-                        Due Date
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Schedule sx={{ mr: 2, fontSize: 24 }} />
-                        Closed Date
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <TrendingUp sx={{ mr: 2, fontSize: 24 }} />
-                        Interest Rate
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <AttachMoney sx={{ mr: 2, fontSize: 24 }} />
-                        Amount
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <TrendingUp sx={{ mr: 2, fontSize: 24 }} />
-                        Interest Amount
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Payment sx={{ mr: 2, fontSize: 24 }} />
-                        Interest Received
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Schedule sx={{ mr: 2, fontSize: 24 }} />
-                        Days Since Issue
-                      </Box>
-                    </TableCell>
-                    <TableCell sx={{ py: 3 }}>
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <AccountBalance sx={{ mr: 2, fontSize: 24 }} />
-                        Status
-                      </Box>
-                    </TableCell>
-                    <TableCell align="center" sx={{ py: 3, minWidth: 200 }}>Actions</TableCell>
-                  </TableRow>
-                </TableHead>
+                                 <TableHead>
+                   <TableRow>
+                     {isSecretary && (
+                       <TableCell sx={{ py: 3 }}>
+                         <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                           <Person sx={{ mr: 2, fontSize: 24 }} />
+                           Member
+                         </Box>
+                       </TableCell>
+                     )}
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <Schedule sx={{ mr: 2, fontSize: 24 }} />
+                         Date
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <Schedule sx={{ mr: 2, fontSize: 24 }} />
+                         Due Date
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <Schedule sx={{ mr: 2, fontSize: 24 }} />
+                         Closed Date
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <TrendingUp sx={{ mr: 2, fontSize: 24 }} />
+                         Interest Rate
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <AttachMoney sx={{ mr: 2, fontSize: 24 }} />
+                         Amount
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <TrendingUp sx={{ mr: 2, fontSize: 24 }} />
+                         Interest Amount
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <Payment sx={{ mr: 2, fontSize: 24 }} />
+                         Interest Received
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <Schedule sx={{ mr: 2, fontSize: 24 }} />
+                         Days Since Issue
+                       </Box>
+                     </TableCell>
+                     <TableCell sx={{ py: 3 }}>
+                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                         <AccountBalance sx={{ mr: 2, fontSize: 24 }} />
+                         Status
+                       </Box>
+                     </TableCell>
+                     {isSecretary && (
+                       <TableCell align="center" sx={{ py: 3, minWidth: 200 }}>Actions</TableCell>
+                     )}
+                   </TableRow>
+                 </TableHead>
                 <TableBody>
                   {paginatedLoans.map((loan) => (
-                    <TableRow 
-                      key={loan.id} 
-                      hover
-                      sx={{ 
-                        '&:nth-of-type(odd)': {
-                          backgroundColor: theme.palette.grey[50],
-                        },
-                        '&:hover': {
-                          backgroundColor: theme.palette.primary.light + '20',
-                          boxShadow: 2,
-                        }
-                      }}
-                    >
-                      <TableCell sx={{ py: 3 }}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                          <Person fontSize="small" />
-                          <Box>
-                            <Typography variant="body1" fontWeight="600" sx={{ color: theme.palette.primary.main }}>
-                              {loan.userName}
-                            </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              User ID: {loan.userId}
-                            </Typography>
-                          </Box>
-                        </Box>
-                      </TableCell>
+                                         <TableRow 
+                       key={loan.id} 
+                       hover
+                       sx={{ 
+                         '&:nth-of-type(odd)': {
+                           backgroundColor: theme.palette.grey[50],
+                         },
+                         '&:hover': {
+                           backgroundColor: theme.palette.primary.light + '20',
+                           boxShadow: 2,
+                         }
+                       }}
+                     >
+                       {isSecretary && (
+                         <TableCell sx={{ py: 3 }}>
+                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                             <Person fontSize="small" />
+                             <Box>
+                               <Typography variant="body1" fontWeight="600" sx={{ color: theme.palette.primary.main }}>
+                                 {loan.userName}
+                               </Typography>
+                             </Box>
+                           </Box>
+                         </TableCell>
+                       )}
                       <TableCell sx={{ py: 3 }}>
                         <Typography variant="body2">
                           {loan.date ? new Date(loan.date).toLocaleDateString() : ''}
@@ -665,58 +689,64 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                           )}
                         </Box>
                       </TableCell>
-                      <TableCell align="center" sx={{ py: 3, minWidth: 200 }}>
-                        <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
-                          <IconButton 
-                            color="primary" 
-                            onClick={() => onEdit(loan)}
-                            sx={{ 
-                              backgroundColor: theme.palette.primary.light + '20',
-                              '&:hover': {
-                                backgroundColor: theme.palette.primary.light + '40',
-                                transform: 'scale(1.1)',
-                              },
-                              transition: 'all 0.2s ease-in-out',
-                            }}
-                          >
-                            <Edit />
-                          </IconButton>
-                          <IconButton 
-                            color="success" 
-                            onClick={() => onRepayment(loan)}
-                            disabled={loan.status.toLowerCase() === 'closed'}
-                            sx={{ 
-                              backgroundColor: loan.status.toLowerCase() === 'closed' 
-                                ? theme.palette.grey[300] 
-                                : theme.palette.success.light + '20',
-                              '&:hover': {
-                                backgroundColor: loan.status.toLowerCase() === 'closed'
-                                  ? theme.palette.grey[300]
-                                  : theme.palette.success.light + '40',
-                                transform: loan.status.toLowerCase() === 'closed' ? 'none' : 'scale(1.1)',
-                              },
-                              transition: 'all 0.2s ease-in-out',
-                              opacity: loan.status.toLowerCase() === 'closed' ? 0.5 : 1,
-                            }}
-                          >
-                            <Payment />
-                          </IconButton>
-                          <IconButton 
-                            color="error" 
-                            onClick={() => handleDeleteClick(loan.id)}
-                            sx={{ 
-                              backgroundColor: theme.palette.error.light + '20',
-                              '&:hover': {
-                                backgroundColor: theme.palette.error.light + '40',
-                                transform: 'scale(1.1)',
-                              },
-                              transition: 'all 0.2s ease-in-out',
-                            }}
-                          >
-                            <Delete />
-                          </IconButton>
-                        </Box>
-                      </TableCell>
+                                             {isSecretary && (
+                         <TableCell align="center" sx={{ py: 3, minWidth: 200 }}>
+                           <Box sx={{ display: 'flex', gap: 1, justifyContent: 'center' }}>
+                             {onEdit && (
+                               <IconButton 
+                                 color="primary" 
+                                 onClick={() => onEdit(loan)}
+                                 sx={{ 
+                                   backgroundColor: theme.palette.primary.light + '20',
+                                   '&:hover': {
+                                     backgroundColor: theme.palette.primary.light + '40',
+                                     transform: 'scale(1.1)',
+                                   },
+                                   transition: 'all 0.2s ease-in-out',
+                                 }}
+                               >
+                                 <Edit />
+                               </IconButton>
+                             )}
+                             <IconButton 
+                               color="success" 
+                               onClick={() => onRepayment(loan)}
+                               disabled={loan.status.toLowerCase() === 'closed'}
+                               sx={{ 
+                                 backgroundColor: loan.status.toLowerCase() === 'closed' 
+                                   ? theme.palette.grey[300] 
+                                   : theme.palette.success.light + '20',
+                                 '&:hover': {
+                                   backgroundColor: loan.status.toLowerCase() === 'closed'
+                                     ? theme.palette.grey[300]
+                                     : theme.palette.success.light + '40',
+                                   transform: loan.status.toLowerCase() === 'closed' ? 'none' : 'scale(1.1)',
+                                 },
+                                 transition: 'all 0.2s ease-in-out',
+                                 opacity: loan.status.toLowerCase() === 'closed' ? 0.5 : 1,
+                               }}
+                             >
+                               <Payment />
+                             </IconButton>
+                             {onDelete && (
+                               <IconButton 
+                                 color="error" 
+                                 onClick={() => handleDeleteClick(loan.id)}
+                                 sx={{ 
+                                   backgroundColor: theme.palette.error.light + '20',
+                                   '&:hover': {
+                                     backgroundColor: theme.palette.error.light + '40',
+                                     transform: 'scale(1.1)',
+                                   },
+                                   transition: 'all 0.2s ease-in-out',
+                                 }}
+                               >
+                                 <Delete />
+                               </IconButton>
+                             )}
+                           </Box>
+                         </TableCell>
+                       )}
                     </TableRow>
                   ))}
                 </TableBody>
@@ -814,20 +844,22 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
     setSelectedLoanTypeId(loanTypeId);
     const selectedType = loanTypes.find(lt => lt.id === loanTypeId);
     if (selectedType) {
-      // Calculate due date based on selected date
-      const selectedDate = formData.date ? new Date(formData.date) : new Date();
-      let dueDate = new Date(selectedDate);
-      
+      // Set default loan term based on loan type
+      let defaultLoanTerm = 1; // Default 1 month
       if (selectedType.loanTypeName === 'Marriage Loan') {
-        dueDate.setMonth(dueDate.getMonth() + 6); // 6 months
+        defaultLoanTerm = 6; // 6 months
       } else if (selectedType.loanTypeName === 'Personal Loan') {
-        dueDate.setMonth(dueDate.getMonth() + 3); // 3 months
-      } else {
-        dueDate.setMonth(dueDate.getMonth() + 1); // Default 1 month
+        defaultLoanTerm = 3; // 3 months
       }
+      
+      // Calculate due date based on selected date and loan term
+      const selectedDate = formData.date ? new Date(formData.date) : new Date();
+      const dueDate = new Date(selectedDate);
+      dueDate.setMonth(dueDate.getMonth() + defaultLoanTerm);
       
       setFormData({ 
         ...formData, 
+        loanTerm: defaultLoanTerm,
         interestRate: selectedType.interestRate,
         dueDate: dueDate.toISOString().split('T')[0]
       });
@@ -836,19 +868,14 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
 
   // Calculate expected interest amount
   const calculateInterestAmount = () => {
-    if (!selectedLoanType || !formData.amount || !formData.dueDate) return 0;
+    if (!selectedLoanType || !formData.amount || !formData.loanTerm) return 0;
     
-    const amount = parseFloat(formData.amount.toString());
-    const monthlyInterestRate = selectedLoanType.interestRate / 100; // Convert percentage to decimal
-    const startDate = new Date();
-    const dueDate = new Date(formData.dueDate);
+    const amount = parseFloat(formData.amount.toString()) || 0;
+    const monthlyInterestRate = (selectedLoanType.interestRate || 0) / 100; // Convert percentage to decimal
+    const loanTerm = formData.loanTerm || 0;
     
-    // Calculate months between start date and due date
-    const monthsDiff = (dueDate.getFullYear() - startDate.getFullYear()) * 12 + 
-                      (dueDate.getMonth() - startDate.getMonth());
-    
-    // Calculate total interest (monthly interest rate * number of months * principal amount)
-    const totalInterest = amount * monthlyInterestRate * monthsDiff;
+    // Calculate total interest (monthly interest rate * loan term * principal amount)
+    const totalInterest = amount * monthlyInterestRate * loanTerm;
     
     return totalInterest;
   };
@@ -909,6 +936,33 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
         </FormControl>
 
         <TextField
+          label="Loan Term (Months)"
+          type="number"
+          value={formData.loanTerm || ''}
+          onChange={e => {
+            const loanTerm = Number(e.target.value);
+            setFormData({ ...formData, loanTerm });
+            
+            // Recalculate due date if date is selected
+            if (formData.date && loanTerm > 0) {
+              const selectedDate = new Date(formData.date);
+              const dueDate = new Date(selectedDate);
+              dueDate.setMonth(dueDate.getMonth() + loanTerm);
+              
+              setFormData(prev => ({ 
+                ...prev, 
+                loanTerm,
+                dueDate: dueDate.toISOString().split('T')[0]
+              }));
+            }
+          }}
+          fullWidth
+          required
+          inputProps={{ min: 1, max: 120 }}
+          helperText="Enter the loan term in months"
+        />
+
+        <TextField
           label="Date"
           type="date"
           value={formData.date ? formData.date.slice(0, 10) : ''}
@@ -916,27 +970,17 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
             const newDate = e.target.value;
             setFormData({ ...formData, date: newDate });
             
-            // Recalculate due date if loan type is selected
-            if (selectedLoanTypeId) {
-              const selectedType = loanTypes.find(lt => lt.id === selectedLoanTypeId);
-              if (selectedType && newDate) {
-                const selectedDate = new Date(newDate);
-                let dueDate = new Date(selectedDate);
-                
-                if (selectedType.loanTypeName === 'Marriage Loan') {
-                  dueDate.setMonth(dueDate.getMonth() + 6); // 6 months
-                } else if (selectedType.loanTypeName === 'Personal Loan') {
-                  dueDate.setMonth(dueDate.getMonth() + 3); // 3 months
-                } else {
-                  dueDate.setMonth(dueDate.getMonth() + 1); // Default 1 month
-                }
-                
-                setFormData(prev => ({ 
-                  ...prev, 
-                  date: newDate,
-                  dueDate: dueDate.toISOString().split('T')[0]
-                }));
-              }
+            // Recalculate due date if loan term is set
+            if (formData.loanTerm && newDate) {
+              const selectedDate = new Date(newDate);
+              const dueDate = new Date(selectedDate);
+              dueDate.setMonth(dueDate.getMonth() + formData.loanTerm);
+              
+              setFormData(prev => ({ 
+                ...prev, 
+                date: newDate,
+                dueDate: dueDate.toISOString().split('T')[0]
+              }));
             }
           }}
           fullWidth
@@ -996,7 +1040,7 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
         </FormControl>
 
         {/* Summary Section */}
-        {selectedLoanType && formData.amount && formData.dueDate && (
+        {selectedLoanType && formData.amount && formData.loanTerm && (
           <Box sx={{ 
             p: 2, 
             backgroundColor: theme.palette.grey[50], 
@@ -1016,10 +1060,16 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
                 <Typography variant="body2" color="text.secondary">Interest Rate</Typography>
                 <Typography variant="body1" fontWeight={600}>{selectedLoanType.interestRate}% per month</Typography>
               </Box>
+                             <Box>
+                 <Typography variant="body2" color="text.secondary">Amount</Typography>
+                 <Typography variant="body1" fontWeight={600} color="success.main">
+                   ₹{(formData.amount || 0).toLocaleString()}
+                 </Typography>
+               </Box>
               <Box>
-                <Typography variant="body2" color="text.secondary">Amount</Typography>
-                <Typography variant="body1" fontWeight={600} color="success.main">
-                  ₹{formData.amount.toLocaleString()}
+                <Typography variant="body2" color="text.secondary">Loan Term</Typography>
+                <Typography variant="body1" fontWeight={600}>
+                  {formData.loanTerm} months
                 </Typography>
               </Box>
               <Box>
@@ -1034,12 +1084,12 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
                   ₹{expectedInterestAmount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </Typography>
               </Box>
-              <Box>
-                <Typography variant="body2" color="text.secondary">Total Repayment</Typography>
-                <Typography variant="body1" fontWeight={600} color="info.main">
-                  ₹{(formData.amount + expectedInterestAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                </Typography>
-              </Box>
+                             <Box>
+                 <Typography variant="body2" color="text.secondary">Total Repayment</Typography>
+                 <Typography variant="body1" fontWeight={600} color="info.main">
+                   ₹{((formData.amount || 0) + expectedInterestAmount).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                 </Typography>
+               </Box>
             </Box>
           </Box>
         )}

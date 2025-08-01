@@ -94,6 +94,10 @@ const Navbar: React.FC = () => {
                 <Dashboard sx={{ mr: 1 }} />
                 Dashboard
               </MenuItem>
+              <MenuItem onClick={() => handleNavigation('#loans')}>
+                <AccountBalance sx={{ mr: 1 }} />
+                Loans
+              </MenuItem>
               {user?.role === 'Secretary' && (
                 <>
                   <MenuItem onClick={() => handleNavigation('#members')}>
@@ -103,10 +107,6 @@ const Navbar: React.FC = () => {
                   <MenuItem onClick={() => handleNavigation('#meetings')}>
                     <Event sx={{ mr: 1 }} />
                     Meetings
-                  </MenuItem>
-                  <MenuItem onClick={() => handleNavigation('#loans')}>
-                    <AccountBalance sx={{ mr: 1 }} />
-                    Loans
                   </MenuItem>
                 </>
               )}
@@ -134,6 +134,13 @@ const Navbar: React.FC = () => {
               >
                 Dashboard
               </Button>
+              <Button
+                color="inherit"
+                onClick={() => handleNavigation('#loans')}
+                startIcon={<AccountBalance />}
+              >
+                Loans
+              </Button>
               {user?.role === 'Secretary' && (
                 <>
                   <Button
@@ -149,13 +156,6 @@ const Navbar: React.FC = () => {
                     startIcon={<Event />}
                   >
                     Meetings
-                  </Button>
-                  <Button
-                    color="inherit"
-                    onClick={() => handleNavigation('#loans')}
-                    startIcon={<AccountBalance />}
-                  >
-                    Loans
                   </Button>
                 </>
               )}

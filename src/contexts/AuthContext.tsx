@@ -1,12 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode, useCallback, useMemo } from 'react';
 import { authService } from '../services/api';
-
-interface User {
-  id: number;
-  name: string;
-  email: string;
-  role: 'Secretary' | 'Member';
-}
+import { User } from '../types/common';
 
 interface AuthContextType {
   user: User | null;
@@ -38,12 +32,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [error, setError] = useState<string | null>(null);
 
   // Check if we have a valid JWT token
-  const isAuthenticated = (): boolean => {
+  const isAuthenticated = useMemo(() => {
     const token = localStorage.getItem('authToken');
     return !!token;
-  };
+  }, []);
 
-  const clearError = () => setError(null);
+  const clearError = useCallback(() => setError(null), []);
 
   const login = async (username: string, password: string) => {
     try {
@@ -135,7 +129,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const value: AuthContextType = {
     user,
-    isAuthenticated: isAuthenticated(),
+    isAuthenticated,
     isLoading,
     login,
     logout,

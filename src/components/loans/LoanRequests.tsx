@@ -305,9 +305,6 @@ const LoanRequests: React.FC = () => {
                             <Typography variant="body1" fontWeight="600" sx={{ color: theme.palette.primary.main }}>
                               {request.userName}
                             </Typography>
-                            <Typography variant="body2" color="text.secondary">
-                              User ID: {request.userId}
-                            </Typography>
                           </Box>
                         </Box>
                       </TableCell>
@@ -335,9 +332,9 @@ const LoanRequests: React.FC = () => {
                         <Chip 
                           label={request.status}
                           color={
-                            request.status.toLowerCase() === 'accepted' ? 'success' : 
-                            request.status.toLowerCase() === 'rejected' ? 'error' : 
-                            request.status.toLowerCase() === 'requested' ? 'warning' : 
+                            request.status.toLowerCase() === 'Accepted' ? 'success' : 
+                            request.status.toLowerCase() === 'Rejected' ? 'error' : 
+                            request.status.toLowerCase() === 'Requested' ? 'warning' : 
                             'default'
                           }
                           size="small"

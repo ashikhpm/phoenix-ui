@@ -127,7 +127,7 @@ const Footer: React.FC = () => {
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                 <Email fontSize="small" sx={{ opacity: 0.8 }} />
                 <Typography variant="body2" sx={{ opacity: 0.9 }}>
-                  info@phoenixsangam.com
+                  info.phoenixsangam@gmail.com
                 </Typography>
               </Box>
               <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>

@@ -55,8 +55,8 @@ interface Meeting {
   location?: string;
   totalMainPayment: number;
   totalWeeklyPayment: number;
-  presentAttendanceCount: number;
-  totalAttendanceCount: number;
+  presentAttendees: number;
+  totalAttendees: number;
   attendancePercentage: number;
   attendedUsersCount: number;
 }
@@ -77,7 +77,14 @@ interface OverdueLoan {
 
 interface LoansDueResponse {
   overdueLoans: OverdueLoan[];
-  upcomingLoans: OverdueLoan[];
+  dueTodayLoans: OverdueLoan[];
+  dueThisWeekLoans: OverdueLoan[];
+  totalOverdueCount: number;
+  totalDueTodayCount: number;
+  totalDueThisWeekCount: number;
+  totalOverdueAmount: number;
+  totalDueTodayAmount: number;
+  totalDueThisWeekAmount: number;
 }
 
 interface LoanRequest {
@@ -125,23 +132,21 @@ const UserDashboard: React.FC = () => {
   const [action, setAction] = useState<string>('');
   const [saving, setSaving] = useState(false);
   
-  // Set default dates to current month start to today
+  // Set default dates to 1 month back from today to today
   const getDefaultDates = () => {
     const now = new Date();
-    const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const oneMonthBack = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
     
-    // Format dates for datetime-local input (YYYY-MM-DDTHH:mm)
+    // Format dates for date input (YYYY-MM-DD)
     const formatDateForInput = (date: Date) => {
       const year = date.getFullYear();
       const month = String(date.getMonth() + 1).padStart(2, '0');
       const day = String(date.getDate()).padStart(2, '0');
-      const hours = String(date.getHours()).padStart(2, '0');
-      const minutes = String(date.getMinutes()).padStart(2, '0');
-      return `${year}-${month}-${day}T${hours}:${minutes}`;
+      return `${year}-${month}-${day}`;
     };
     
     return {
-      startDate: formatDateForInput(currentMonthStart),
+      startDate: formatDateForInput(oneMonthBack),
       endDate: formatDateForInput(now)
     };
   };
@@ -216,9 +221,9 @@ const UserDashboard: React.FC = () => {
       setLoading(true);
       setError(null);
       
-      // Convert datetime-local format to ISO string for API
-      const formatDateForAPI = (dateTimeLocal: string) => {
-        const date = new Date(dateTimeLocal);
+      // Convert date format to ISO string for API
+      const formatDateForAPI = (dateString: string) => {
+        const date = new Date(dateString);
         return date.toISOString();
       };
       
@@ -261,7 +266,7 @@ const UserDashboard: React.FC = () => {
       setLoansError(null);
       const response = await apiService.get<LoansDueResponse>('/api/Dashboard/loans-due');
       setOverdueLoans(response.overdueLoans || []);
-      setUpcomingLoans(response.upcomingLoans || []);
+      setUpcomingLoans([...(response.dueTodayLoans || []), ...(response.dueThisWeekLoans || [])]);
     } catch (err: any) {
       setLoansError(err.response?.data?.message || 'Failed to fetch overdue loans.');
     } finally {
@@ -398,12 +403,12 @@ const UserDashboard: React.FC = () => {
                                 </Box>
                                                                       <Box component="td" sx={{ p: 2 }}>
                                         <Typography variant="body2" fontWeight={600}>
-                                          ₹{loan.amount.toLocaleString()}
+                                          ₹{(loan.amount || 0).toLocaleString()}
                                         </Typography>
                                       </Box>
                                       <Box component="td" sx={{ p: 2 }}>
                                         <Typography variant="body2" fontWeight={600}>
-                                          ₹{loan.interestAmount.toLocaleString()}
+                                          ₹{(loan.interestAmount || 0).toLocaleString()}
                                         </Typography>
                                       </Box>
                                       <Box component="td" sx={{ p: 2 }}>
@@ -482,12 +487,12 @@ const UserDashboard: React.FC = () => {
                                 </Box>
                                                                       <Box component="td" sx={{ p: 2 }}>
                                         <Typography variant="body2" fontWeight={600}>
-                                          ₹{loan.amount.toLocaleString()}
+                                          ₹{(loan.amount || 0).toLocaleString()}
                                         </Typography>
                                       </Box>
                                       <Box component="td" sx={{ p: 2 }}>
                                         <Typography variant="body2" fontWeight={600}>
-                                          ₹{loan.interestAmount.toLocaleString()}
+                                          ₹{(loan.interestAmount || 0).toLocaleString()}
                                         </Typography>
                                       </Box>
                                       <Box component="td" sx={{ p: 2 }}>
@@ -611,7 +616,7 @@ const UserDashboard: React.FC = () => {
                               </Box>
                               <Box component="td" sx={{ p: 2 }}>
                                 <Typography variant="body2" fontWeight={600}>
-                                  ₹{request.amount.toLocaleString()}
+                                  ₹{(request.amount || 0).toLocaleString()}
                                 </Typography>
                               </Box>
                               <Box component="td" sx={{ p: 2 }}>
@@ -703,9 +708,9 @@ const UserDashboard: React.FC = () => {
               <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
                 <TextField
                   label="Start Date"
-                  type="datetime-local"
-                  value={startDate.slice(0, 16)}
-                  onChange={(e) => setStartDate(e.target.value + ':00')}
+                  type="date"
+                  value={startDate}
+                  onChange={(e) => setStartDate(e.target.value)}
                   size="small"
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -714,9 +719,9 @@ const UserDashboard: React.FC = () => {
               <Box sx={{ flex: '1 1 300px', minWidth: 0 }}>
                 <TextField
                   label="End Date"
-                  type="datetime-local"
-                  value={endDate.slice(0, 16)}
-                  onChange={(e) => setEndDate(e.target.value + ':00')}
+                  type="date"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
                   size="small"
                   fullWidth
                   InputLabelProps={{ shrink: true }}
@@ -834,12 +839,12 @@ const UserDashboard: React.FC = () => {
                             Attendance
                           </Typography>
                           <Typography variant="body2" fontWeight="bold" color="primary.main">
-                            {meeting.attendedUsersCount}/{meeting.totalAttendanceCount}
+                            {meeting.presentAttendees}/{meeting.totalAttendees}
                           </Typography>
                           <Chip
-                            label={`${meeting.attendancePercentage.toFixed(1)}%`}
+                            label={`${(((meeting.presentAttendees / meeting.totalAttendees)*100)|| 0).toFixed(1)}%`}
                             size="small"
-                            color={meeting.attendancePercentage >= 80 ? 'success' : meeting.attendancePercentage >= 60 ? 'warning' : 'error'}
+                            color={(((meeting.presentAttendees / meeting.totalAttendees)*100) || 0) >= 80 ? 'success' : (((meeting.presentAttendees / meeting.totalAttendees)*100) || 0) >= 60 ? 'warning' : 'error'}
                             sx={{ mt: 0.5 }}
                           />
                         </Box>
@@ -922,7 +927,7 @@ const UserDashboard: React.FC = () => {
                 </Box>
                 <Box>
                   <Typography variant="body2" color="text.secondary">Amount</Typography>
-                  <Typography variant="body1" fontWeight={600}>₹{selectedRequest.amount.toLocaleString()}</Typography>
+                  <Typography variant="body1" fontWeight={600}>₹{(selectedRequest.amount || 0).toLocaleString()}</Typography>
                 </Box>
                 <Box>
                   <Typography variant="body2" color="text.secondary">Interest Rate</Typography>
