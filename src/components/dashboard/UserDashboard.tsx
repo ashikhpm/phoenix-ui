@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { apiService } from '../../services/api';
+import { hasAdminPrivilegesFromUser } from '../../utils/helpers';
 import AuthenticatedLayout from '../layout/AuthenticatedLayout';
 import {
   Typography,
@@ -27,7 +28,8 @@ import {
   Radio,
   RadioGroup,
   FormControlLabel,
-  FormLabel
+  FormLabel,
+  Tooltip
 } from '@mui/material';
 import {
   AccountCircle,
@@ -96,12 +98,16 @@ interface LoanRequest {
   interestRate: number;
   amount: number;
   status: string;
-  reason?: string;
+  description?: string;
+  chequeNumber?: string;
 }
 
 const UserDashboard: React.FC = () => {
   const { user, logout } = useAuth();
   const theme = useTheme();
+  
+  // Get user ID from URL if present
+  const [targetUserId, setTargetUserId] = useState<number | null>(null);
   
   // Meeting list state
   const [meetings, setMeetings] = useState<Meeting[]>([]);
@@ -130,6 +136,8 @@ const UserDashboard: React.FC = () => {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
   const [action, setAction] = useState<string>('');
+  const [reason, setReason] = useState<string>('');
+  const [chequeNumber, setChequeNumber] = useState<string>('');
   const [saving, setSaving] = useState(false);
   
   // Set default dates to 1 month back from today to today
@@ -177,7 +185,8 @@ const UserDashboard: React.FC = () => {
     setLoanRequestsLoading(true);
     setLoanRequestsError(null);
     try {
-      const response = await apiService.get<LoanRequest[]>('/api/dashboard/loan-requests');
+      const userId = targetUserId || '';
+      const response = await apiService.get<LoanRequest[]>(`/api/dashboard/loan-requests?userId=${userId}`);
       setLoanRequests(response);
     } catch (err: any) {
       setLoanRequestsError(err.response?.data?.message || 'Failed to fetch loan requests.');
@@ -189,6 +198,8 @@ const UserDashboard: React.FC = () => {
   const handleActionClick = (request: LoanRequest) => {
     setSelectedRequest(request);
     setAction('');
+    setReason('');
+    setChequeNumber('');
     setActionDialogOpen(true);
   };
 
@@ -196,17 +207,35 @@ const UserDashboard: React.FC = () => {
     setActionDialogOpen(false);
     setSelectedRequest(null);
     setAction('');
+    setReason('');
+    setChequeNumber('');
   };
 
   const handleActionSubmit = async () => {
     if (!selectedRequest || !action) return;
 
+    // Check if reason is required for rejection
+    if (action === 'Rejected' && !reason.trim()) {
+      setLoanRequestsError('Reason is required when rejecting a loan request.');
+      return;
+    }
+
+    // Check if cheque number is required for acceptance
+    if (action === 'Accepted' && !chequeNumber.trim()) {
+      setLoanRequestsError('Cheque number is required when accepting a loan request.');
+      return;
+    }
+
     setSaving(true);
     setLoanRequestsError(null);
     try {
-      await apiService.put(`/api/Dashboard/loan-requests/${selectedRequest.id}/action`, {
-        action: action
-      });
+      const payload: any = { 
+        action: action,
+        chequeNumber: action === 'Accepted' ? chequeNumber.trim() : null,
+        description: action === 'Rejected' ? reason.trim() : null
+      };
+      
+      await apiService.put(`/api/Dashboard/loan-requests/${selectedRequest.id}/action`, payload);
       handleActionClose();
       fetchLoanRequests(); // Refresh the list
     } catch (err: any) {
@@ -233,6 +262,11 @@ const UserDashboard: React.FC = () => {
         startDate: formatDateForAPI(startDate),
         endDate: formatDateForAPI(endDate)
       });
+      
+      // Add user ID to params if present
+      if (targetUserId) {
+        params.append('userId', targetUserId.toString());
+      }
       
       const response = await apiService.get<any>(`/api/Dashboard/meetings?${params.toString()}`);
       console.log(response);  
@@ -264,7 +298,9 @@ const UserDashboard: React.FC = () => {
     try {
       setLoansLoading(true);
       setLoansError(null);
-      const response = await apiService.get<LoansDueResponse>('/api/Dashboard/loans-due');
+      
+      const userId = targetUserId || '';
+      const response = await apiService.get<LoansDueResponse>(`/api/Dashboard/loans-due?userId=${userId}`);
       setOverdueLoans(response.overdueLoans || []);
       setUpcomingLoans([...(response.dueTodayLoans || []), ...(response.dueThisWeekLoans || [])]);
     } catch (err: any) {
@@ -274,11 +310,21 @@ const UserDashboard: React.FC = () => {
     }
   };
 
+  // Extract user ID from URL on component mount
+  useEffect(() => {
+    const hash = window.location.hash;
+    const dashboardMatch = hash.match(/#dashboard\/(\d+)/);
+    if (dashboardMatch) {
+      const userId = parseInt(dashboardMatch[1]);
+      setTargetUserId(userId);
+    }
+  }, []);
+
   useEffect(() => {
     fetchMeetings();
     fetchOverdueLoans();
     fetchLoanRequests();
-  }, [page, pageSize, startDate, endDate]);
+  }, [page, pageSize, startDate, endDate, targetUserId]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('en-US', {
@@ -304,33 +350,42 @@ const UserDashboard: React.FC = () => {
     <AuthenticatedLayout>
       <Box sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1">
-            Dashboard
-          </Typography>
+          <Box>
+            <Typography variant="h4" component="h1">
+              Dashboard
+            </Typography>
+            {targetUserId && (
+              <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                Viewing data for User ID: {targetUserId}
+              </Typography>
+            )}
+          </Box>
           
-                  {/* Loan Request Button - Only show for non-secretary users */}
-        {user && user.role !== 'Secretary' && (
-            <Button
-              variant="contained"
-              color="primary"
-              startIcon={<Add />}
-              onClick={handleLoanRequestClick}
-              sx={{
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-                px: 3,
-                py: 1,
-                '&:hover': {
-                  transform: 'translateY(-2px)',
-                  boxShadow: theme.shadows[8],
-                },
-                transition: 'all 0.2s ease-in-out',
-              }}
-            >
-              Request Loan
-            </Button>
-          )}
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            {/* Loan Request Button - Show for all users */}
+            {user && (
+              <Button
+                variant="contained"
+                color="primary"
+                startIcon={<Add />}
+                onClick={handleLoanRequestClick}
+                sx={{
+                  borderRadius: 2,
+                  textTransform: 'none',
+                  fontWeight: 600,
+                  px: 3,
+                  py: 1,
+                  '&:hover': {
+                    transform: 'translateY(-2px)',
+                    boxShadow: theme.shadows[8],
+                  },
+                  transition: 'all 0.2s ease-in-out',
+                }}
+              >
+                Request Loan
+              </Button>
+            )}
+          </Box>
         </Box>
         
                   {/* Loans Due Section */}
@@ -570,7 +625,7 @@ const UserDashboard: React.FC = () => {
                       <Box component="table" sx={{ width: '100%', borderCollapse: 'collapse' }}>
                         <Box component="thead">
                           <Box component="tr" sx={{ borderBottom: 1, borderColor: 'divider' }}>
-                            {user?.role === 'Secretary' && (
+                            {hasAdminPrivilegesFromUser(user) && (
                               <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Member</Box>
                             )}
                             <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Request Date</Box>
@@ -578,7 +633,8 @@ const UserDashboard: React.FC = () => {
                             <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Amount</Box>
                             <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Interest Rate</Box>
                             <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Status</Box>
-                            {user?.role === 'Secretary' && (
+                            <Box component="th" sx={{ p: 2, textAlign: 'left', fontWeight: 600 }}>Reason/Cheque Number</Box>
+                            {hasAdminPrivilegesFromUser(user) && (
                               <Box component="th" sx={{ p: 2, textAlign: 'center', fontWeight: 600 }}>Actions</Box>
                             )}
                           </Box>
@@ -594,7 +650,7 @@ const UserDashboard: React.FC = () => {
                                 '&:hover': { backgroundColor: 'action.hover' }
                               }}
                             >
-                              {user?.role === 'Secretary' && (
+                              {hasAdminPrivilegesFromUser(user) && (
                                 <Box component="td" sx={{ p: 2 }}>
                                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                                     <AccountBalance sx={{ fontSize: 16, color: 'text.secondary' }} />
@@ -636,26 +692,45 @@ const UserDashboard: React.FC = () => {
                                   size="small"
                                 />
                               </Box>
-                              {user?.role === 'Secretary' && (
+                              <Box component="td" sx={{ p: 2 }}>
+                                <Typography variant="body2" color="text.secondary">
+                                  {request.status.toLowerCase() === 'rejected' ? (request.description || 'N/A') :
+                                    request.status.toLowerCase() === 'accepted' ? (request.chequeNumber || 'N/A') :
+                                    'N/A'}
+                                </Typography>
+                              </Box>
+                              {hasAdminPrivilegesFromUser(user) && (
                                 <Box component="td" sx={{ p: 2, textAlign: 'center' }}>
-                                  <Button
-                                    variant="contained"
-                                    color="primary"
-                                    size="small"
-                                    onClick={() => handleActionClick(request)}
-                                    startIcon={<Add />}
-                                    sx={{
-                                      borderRadius: 2,
-                                      textTransform: 'none',
-                                      fontWeight: 600,
-                                      '&:hover': {
-                                        transform: 'scale(1.05)',
-                                      },
-                                      transition: 'all 0.2s ease-in-out',
-                                    }}
+                                  <Tooltip 
+                                    title={
+                                      request.status.toLowerCase() !== 'requested' ? 'Decision made already' :
+                                      request.userId === user?.id ? 'Cannot review your own request' :
+                                      'Review loan request'
+                                    }
+                                    placement="top"
                                   >
-                                    Review
-                                  </Button>
+                                    <span>
+                                      <Button
+                                        variant="contained"
+                                        color="primary"
+                                        size="small"
+                                        onClick={() => handleActionClick(request)}
+                                        startIcon={<Add />}
+                                        disabled={request.status.toLowerCase() !== 'requested' || request.userId === user?.id}
+                                        sx={{
+                                          borderRadius: 2,
+                                          textTransform: 'none',
+                                          fontWeight: 600,
+                                          '&:hover': {
+                                            transform: 'scale(1.05)',
+                                          },
+                                          transition: 'all 0.2s ease-in-out',
+                                        }}
+                                      >
+                                        Review
+                                      </Button>
+                                    </span>
+                                  </Tooltip>
                                 </Box>
                               )}
                             </Box>
@@ -949,7 +1024,17 @@ const UserDashboard: React.FC = () => {
             </FormLabel>
             <RadioGroup
               value={action}
-              onChange={(e) => setAction(e.target.value)}
+              onChange={(e) => {
+                setAction(e.target.value);
+                // Clear reason when switching to Accept
+                if (e.target.value === 'Accepted') {
+                  setReason('');
+                }
+                // Clear cheque number when switching to Reject
+                if (e.target.value === 'Rejected') {
+                  setChequeNumber('');
+                }
+              }}
               sx={{ gap: 2 }}
             >
               <FormControlLabel
@@ -974,6 +1059,54 @@ const UserDashboard: React.FC = () => {
               />
             </RadioGroup>
           </FormControl>
+          
+          {/* Reason Text Area - Only show when Reject is selected */}
+          {action === 'Rejected' && (
+            <Box sx={{ mt: 3 }}>
+              <TextField
+                fullWidth
+                label="Reason for Rejection"
+                placeholder="Please provide a reason for rejecting this loan request..."
+                multiline
+                rows={4}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                required
+                error={action === 'Rejected' && !reason.trim()}
+                helperText={action === 'Rejected' && !reason.trim() ? 'Reason is required when rejecting a request' : ''}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.error.main,
+                    },
+                  },
+                }}
+              />
+            </Box>
+          )}
+
+          {/* Cheque Number Text Field - Only show when Accept is selected */}
+          {action === 'Accepted' && (
+            <Box sx={{ mt: 3 }}>
+              <TextField
+                fullWidth
+                label="Cheque Number"
+                placeholder="Enter the cheque number..."
+                value={chequeNumber}
+                onChange={(e) => setChequeNumber(e.target.value)}
+                required
+                error={action === 'Accepted' && !chequeNumber.trim()}
+                helperText={action === 'Accepted' && !chequeNumber.trim() ? 'Cheque number is required when accepting a request' : ''}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.success.main,
+                    },
+                  },
+                }}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button 
@@ -987,7 +1120,7 @@ const UserDashboard: React.FC = () => {
           <Button 
             onClick={handleActionSubmit} 
             variant="contained"
-            disabled={!action || saving}
+            disabled={!action || saving || (action === 'Rejected' && !reason.trim()) || (action === 'Accepted' && !chequeNumber.trim())}
             sx={{ borderRadius: 2 }}
           >
             {saving ? <CircularProgress size={20} /> : 'Save Decision'}

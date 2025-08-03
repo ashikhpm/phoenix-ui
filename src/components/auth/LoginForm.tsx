@@ -72,22 +72,32 @@ const LoginForm: React.FC = () => {
         >
           <Box
             sx={{
-              backgroundColor: 'primary.main',
-              borderRadius: '50%',
-              width: 56,
-              height: 56,
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
-              justifyContent: 'center',
-              marginBottom: 2,
+              marginBottom: 3,
             }}
           >
-            <LockOutlined sx={{ color: 'white' }} />
+            <img 
+              src="/logo.png" 
+              alt="Phoenix Sangam Logo" 
+              style={{ 
+                height: 80, 
+                width: 'auto',
+                marginBottom: 16
+              }}
+              onError={(e) => {
+                // Hide logo if file doesn't exist
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <Typography component="h1" variant="h4" gutterBottom sx={{ fontWeight: 600, color: 'primary.main' }}>
+              Phoenix Sangam
+            </Typography>
+            <Typography component="h2" variant="h6" gutterBottom sx={{ color: 'text.secondary', mb: 2 }}>
+              Sign In
+            </Typography>
           </Box>
-          
-          <Typography component="h1" variant="h5" gutterBottom>
-            Sign In
-          </Typography>
 
           {error && (
             <Alert severity="error" sx={{ width: '100%', mb: 2 }}>

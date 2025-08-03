@@ -31,6 +31,7 @@ import {
   FormControlLabel,
   FormControl,
   FormLabel,
+  TextField,
 } from '@mui/material';
 import { 
   Person, 
@@ -44,6 +45,7 @@ import {
   ThumbDown
 } from '@mui/icons-material';
 import { apiService } from '../../services/api';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface LoanRequest {
   id: number;
@@ -54,7 +56,8 @@ interface LoanRequest {
   interestRate: number;
   amount: number;
   status: string;
-  reason?: string;
+  description?: string;
+  chequeNumber?: string;
 }
 
 const LoanRequests: React.FC = () => {
@@ -66,8 +69,11 @@ const LoanRequests: React.FC = () => {
   const [actionDialogOpen, setActionDialogOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState<LoanRequest | null>(null);
   const [action, setAction] = useState<string>('');
+  const [description, setReason] = useState<string>('');
+  const [chequeNumber, setChequeNumber] = useState<string>('');
   const [saving, setSaving] = useState(false);
   const theme = useTheme();
+  const { user } = useAuth();
 
   // Fetch loan requests
   const fetchLoanRequests = async () => {
@@ -90,6 +96,8 @@ const LoanRequests: React.FC = () => {
   const handleActionClick = (request: LoanRequest) => {
     setSelectedRequest(request);
     setAction('');
+    setReason('');
+    setChequeNumber('');
     setActionDialogOpen(true);
   };
 
@@ -97,17 +105,35 @@ const LoanRequests: React.FC = () => {
     setActionDialogOpen(false);
     setSelectedRequest(null);
     setAction('');
+    setReason('');
+    setChequeNumber('');
   };
 
   const handleActionSubmit = async () => {
     if (!selectedRequest || !action) return;
+    
+    // Check if reason is required for rejection
+    if (action === 'Rejected' && !description.trim()) {
+      setError('Reason is required when rejecting a loan request.');
+      return;
+    }
+
+    // Check if cheque number is required for acceptance
+    if (action === 'Accepted' && !chequeNumber.trim()) {
+      setError('Cheque number is required when accepting a loan request.');
+      return;
+    }
 
     setSaving(true);
     setError(null);
     try {
-      await apiService.put(`/api/Dashboard/loan-requests/${selectedRequest.id}/action`, {
-        action: action
-      });
+      const payload: any = { 
+        action: action,
+        chequeNumber: action === 'Accepted' ? chequeNumber.trim() : null,
+        description: action === 'Rejected' ? description.trim() : null
+      };
+      
+      await apiService.put(`/api/Dashboard/loan-requests/${selectedRequest.id}/action`, payload);
       handleActionClose();
       fetchLoanRequests(); // Refresh the list
     } catch (err: any) {
@@ -280,6 +306,12 @@ const LoanRequests: React.FC = () => {
                         Status
                       </Box>
                     </TableCell>
+                    <TableCell sx={{ py: 3 }}>
+                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                        <AccountBalance sx={{ mr: 2, fontSize: 24 }} />
+                        Reason/Cheque Number
+                      </Box>
+                    </TableCell>
                     <TableCell align="center" sx={{ py: 3 }}>Actions</TableCell>
                   </TableRow>
                 </TableHead>
@@ -341,25 +373,44 @@ const LoanRequests: React.FC = () => {
                           variant="outlined"
                         />
                       </TableCell>
+                      <TableCell sx={{ py: 3 }}>
+                        <Typography variant="body2" color="text.secondary">
+                          {request.status.toLowerCase() === 'rejected' ? (request.description || 'N/A') :
+                           request.status.toLowerCase() === 'accepted' ? (request.chequeNumber || 'N/A') :
+                           'N/A'}
+                        </Typography>
+                      </TableCell>
                       <TableCell align="center" sx={{ py: 3 }}>
-                        <Button
-                          variant="contained"
-                          color="primary"
-                          size="small"
-                          onClick={() => handleActionClick(request)}
-                          startIcon={<CheckCircle />}
-                          sx={{
-                            borderRadius: 2,
-                            textTransform: 'none',
-                            fontWeight: 600,
-                            '&:hover': {
-                              transform: 'scale(1.05)',
-                            },
-                            transition: 'all 0.2s ease-in-out',
-                          }}
+                        <Tooltip 
+                          title={
+                            request.status.toLowerCase() !== 'requested' ? 'Decision made already' :
+                            request.userId === user?.id ? 'Cannot review your own request' :
+                            'Review loan request'
+                          }
+                          placement="top"
                         >
-                          Review
-                        </Button>
+                          <span>
+                            <Button
+                              variant="contained"
+                              color="primary"
+                              size="small"
+                              onClick={() => handleActionClick(request)}
+                              startIcon={<CheckCircle />}
+                              disabled={request.status.toLowerCase() !== 'requested' || request.userId === user?.id}
+                              sx={{
+                                borderRadius: 2,
+                                textTransform: 'none',
+                                fontWeight: 600,
+                                '&:hover': {
+                                  transform: 'scale(1.05)',
+                                },
+                                transition: 'all 0.2s ease-in-out',
+                              }}
+                            >
+                              Review
+                            </Button>
+                          </span>
+                        </Tooltip>
                       </TableCell>
                     </TableRow>
                   ))}
@@ -440,7 +491,18 @@ const LoanRequests: React.FC = () => {
             </FormLabel>
             <RadioGroup
               value={action}
-              onChange={(e) => setAction(e.target.value)}
+              onChange={(e) => {
+                console.log('Action changed to:', e.target.value);
+                setAction(e.target.value);
+                // Clear reason when switching to Accept
+                if (e.target.value === 'Accepted') {
+                  setReason('');
+                }
+                // Clear cheque number when switching to Reject
+                if (e.target.value === 'Rejected') {
+                  setChequeNumber('');
+                }
+              }}
               sx={{ gap: 2 }}
             >
               <FormControlLabel
@@ -465,6 +527,57 @@ const LoanRequests: React.FC = () => {
               />
             </RadioGroup>
           </FormControl>
+          
+          {/* Reason Text Area - Only show when Reject is selected */}
+          {action === 'Rejected' && (
+            <Box sx={{ mt: 3 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                Debug: Action is "{action}"
+              </Typography>
+              <TextField
+                fullWidth
+                label="Reason for Rejection"
+                placeholder="Please provide a reason for rejecting this loan request..."
+                multiline
+                rows={4}
+                value={description}
+                onChange={(e) => setReason(e.target.value)}
+                required
+                error={action === 'Rejected' && !description.trim()}
+                helperText={action === 'Rejected' && !description.trim() ? 'Reason is required when rejecting a request' : ''}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.error.main,
+                    },
+                  },
+                }}
+              />
+            </Box>
+          )}
+
+          {/* Cheque Number Text Field - Only show when Accept is selected */}
+          {action === 'Accepted' && (
+            <Box sx={{ mt: 3 }}>
+              <TextField
+                fullWidth
+                label="Cheque Number"
+                placeholder="Enter the cheque number..."
+                value={chequeNumber}
+                onChange={(e) => setChequeNumber(e.target.value)}
+                required
+                error={action === 'Accepted' && !chequeNumber.trim()}
+                helperText={action === 'Accepted' && !chequeNumber.trim() ? 'Cheque number is required when accepting a request' : ''}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&.Mui-focused .MuiOutlinedInput-notchedOutline': {
+                      borderColor: theme.palette.success.main,
+                    },
+                  },
+                }}
+              />
+            </Box>
+          )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button 
@@ -478,7 +591,7 @@ const LoanRequests: React.FC = () => {
           <Button 
             onClick={handleActionSubmit} 
             variant="contained"
-            disabled={!action || saving}
+            disabled={!action || saving || (action === 'Rejected' && !description.trim()) || (action === 'Accepted' && !chequeNumber.trim())}
             sx={{ borderRadius: 2 }}
           >
             {saving ? <CircularProgress size={20} /> : 'Save Decision'}

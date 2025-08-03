@@ -4,7 +4,20 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'Admin' | 'User';
+  address: string;
+  phone: string;
+  isActive: boolean;
+  inactiveDate: string | null;
+  joiningDate: string | null;
+  userRoleId: number;
+  userRole: {
+    id: number;
+    name: string;
+    description: string;
+    users: any[];
+  };
+  attendances: any[];
+  meetingPayments: any[];
 }
 
 export interface LoginCredentials {

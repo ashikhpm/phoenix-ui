@@ -9,6 +9,7 @@ import MeetingPage from './meetings/MeetingPage';
 import MeetingDetailsPage from './meetings/MeetingDetailsPage';
 import PlaceholderPage from './pages/PlaceholderPage';
 import LoanManager from './loans/LoanManager';
+import UserActivity from './activity/UserActivity';
 import ProfilePage from './auth/ProfilePage';
 import { Box, CircularProgress, Typography } from '@mui/material';
 
@@ -27,7 +28,12 @@ const AppRouter: React.FC = () => {
           setCurrentPage('login');
           break;
         case 'dashboard':
-          setCurrentPage('dashboard');
+          if (params[0] && !isNaN(Number(params[0]))) {
+            setCurrentPage('dashboard');
+            // The UserDashboard component will handle the user ID from URL
+          } else {
+            setCurrentPage('dashboard');
+          }
           break;
         case 'members':
           setCurrentPage('members');
@@ -48,6 +54,9 @@ const AppRouter: React.FC = () => {
           break;
         case 'loans':
           setCurrentPage('loans');
+          break;
+        case 'activity':
+          setCurrentPage('activity');
           break;
         default:
           setCurrentPage('members');
@@ -80,7 +89,7 @@ const AppRouter: React.FC = () => {
   }
 
   if (!isAuthenticated) {
-    return <ProtectedRoute><div /></ProtectedRoute>;
+    return <AuthManager />;
   }
 
   const renderPage = () => {
@@ -91,19 +100,19 @@ const AppRouter: React.FC = () => {
         return <UserDashboard />;
       case 'members':
         return (
-          <RoleBasedRoute allowedRoles={['Secretary']}>
+          <RoleBasedRoute allowedRoles={['Secretary', 'President', 'Treasurer']}>
             <MemberPage />
           </RoleBasedRoute>
         );
       case 'meetings':
         return (
-          <RoleBasedRoute allowedRoles={['Secretary']}>
+          <RoleBasedRoute allowedRoles={['Secretary', 'President', 'Treasurer']}>
             <MeetingPage />
           </RoleBasedRoute>
         );
       case 'meeting-details':
         return (
-          <RoleBasedRoute allowedRoles={['Secretary']}>
+          <RoleBasedRoute allowedRoles={['Secretary', 'President', 'Treasurer']}>
             <MeetingDetailsPage onBack={() => window.location.hash = '#meetings'} />
           </RoleBasedRoute>
         );
@@ -113,6 +122,12 @@ const AppRouter: React.FC = () => {
         return <PlaceholderPage title="Settings" description="Settings page coming soon..." />;
       case 'loans':
         return <LoanManager />;
+      case 'activity':
+        return (
+          <RoleBasedRoute allowedRoles={['Secretary', 'President', 'Treasurer']}>
+            <UserActivity />
+          </RoleBasedRoute>
+        );
       default:
         return <UserDashboard />;
     }

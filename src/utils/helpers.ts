@@ -64,10 +64,46 @@ export const isSecretary = (role?: string): boolean => {
 };
 
 /**
+ * Check if user has President role
+ */
+export const isPresident = (role?: string): boolean => {
+  return role === 'President';
+};
+
+/**
+ * Check if user has Treasurer role
+ */
+export const isTreasurer = (role?: string): boolean => {
+  return role === 'Treasurer';
+};
+
+/**
+ * Check if user has administrative privileges (Secretary, President, or Treasurer)
+ */
+export const hasAdminPrivileges = (role?: string): boolean => {
+  return role === 'Secretary' || role === 'President' || role === 'Treasurer';
+};
+
+/**
  * Check if user has Member role
  */
 export const isMember = (role?: string): boolean => {
   return role === 'Member';
+};
+
+/**
+ * Get user role from user object
+ */
+export const getUserRole = (user: any): string => {
+  return user?.userRole?.name || user?.role || '';
+};
+
+/**
+ * Check if user has administrative privileges using user object
+ */
+export const hasAdminPrivilegesFromUser = (user: any): boolean => {
+  const role = getUserRole(user);
+  return hasAdminPrivileges(role);
 };
 
 /**

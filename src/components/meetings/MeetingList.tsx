@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { apiService } from '../../services/api';
+import { AttendanceSummary } from '../../types/common';
 import {
   Paper,
   Typography,
@@ -48,18 +49,7 @@ interface Meeting {
   location?: string;
 }
 
-interface MeetingSummary {
-  id: number;
-  date: string;
-  time: string;
-  description?: string;
-  location?: string;
-  totalMainPayment: number;
-  totalWeeklyPayment: number;
-  presentAttendanceCount: number;
-  totalAttendanceCount: number;
-  attendancePercentage: number;
-}
+
 
 interface MeetingListProps {
   onEdit?: (meeting: Meeting) => void;
@@ -76,10 +66,9 @@ const MeetingList: React.FC<MeetingListProps> = ({ onEdit, refreshKey }) => {
   const [pageSize, setPageSize] = useState(10);
   const [deleteId, setDeleteId] = useState<number | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
-  const [attendedUsers, setAttendedUsers] = useState<any[]>([]);
-  const [attendedUsersOpen, setAttendedUsersOpen] = useState(false);
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
+  const [attendanceDialogOpen, setAttendanceDialogOpen] = useState(false);
   const [selectedMeetingForAttendance, setSelectedMeetingForAttendance] = useState<Meeting | null>(null);
-  const [meetingSummary, setMeetingSummary] = useState<MeetingSummary | null>(null);
 
   const fetchMeetings = useCallback(async () => {
     try {
@@ -136,25 +125,17 @@ const MeetingList: React.FC<MeetingListProps> = ({ onEdit, refreshKey }) => {
     window.location.hash = `#meetings/${meeting.id}`;
   };
 
-  const handleViewAttendedUsers = async (meeting: Meeting) => {
+  const handleViewAttendance = async (meeting: Meeting) => {
     try {
       setLoading(true);
       
-      // Fetch meeting summary
-      const summaryResponse = await apiService.get<MeetingSummary>(`/api/Meeting/${meeting.id}/summary`);
-      setMeetingSummary(summaryResponse);
-      
-      // Fetch attended users for this meeting
-      const response = await apiService.get<any[]>(`/api/Attendance/meeting/${meeting.id}`);
-      // Filter only users who are present and extract user names
-      const presentUsers = response
-        .filter((attendance: any) => attendance.isPresent)
-        .map((attendance: any) => attendance.user);
-      setAttendedUsers(presentUsers);
+      // Fetch attendance summary using the new endpoint
+      const response = await apiService.get<AttendanceSummary>(`/api/Attendance/meeting/${meeting.id}/summary`);
+      setAttendanceSummary(response);
       setSelectedMeetingForAttendance(meeting);
-      setAttendedUsersOpen(true);
+      setAttendanceDialogOpen(true);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to fetch attended users.');
+      setError(err.response?.data?.message || 'Failed to fetch attendance data.');
     } finally {
       setLoading(false);
     }
@@ -382,7 +363,7 @@ const MeetingList: React.FC<MeetingListProps> = ({ onEdit, refreshKey }) => {
                         </IconButton>
                         <IconButton 
                           color="secondary" 
-                          onClick={() => handleViewAttendedUsers(meeting)}
+                          onClick={() => handleViewAttendance(meeting)}
                           sx={{ 
                             backgroundColor: theme.palette.secondary.light + '20',
                             '&:hover': {
@@ -513,11 +494,11 @@ const MeetingList: React.FC<MeetingListProps> = ({ onEdit, refreshKey }) => {
         </DialogActions>
       </Dialog>
 
-      {/* Attended Users Dialog */}
+      {/* Meeting Summary Dialog */}
       <Dialog 
-        open={attendedUsersOpen} 
-        onClose={() => setAttendedUsersOpen(false)}
-        maxWidth="sm"
+        open={attendanceDialogOpen} 
+        onClose={() => setAttendanceDialogOpen(false)}
+        maxWidth="md"
         fullWidth
         PaperProps={{
           sx: {
@@ -532,7 +513,7 @@ const MeetingList: React.FC<MeetingListProps> = ({ onEdit, refreshKey }) => {
         }}>
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
             <People sx={{ mr: 2 }} />
-            Attended Users
+            Meeting Summary
             {selectedMeetingForAttendance && (
               <Typography variant="body2" sx={{ ml: 2, opacity: 0.8 }}>
                 - {formatDate(selectedMeetingForAttendance.date)} at {formatTime(selectedMeetingForAttendance.time)}
@@ -541,73 +522,165 @@ const MeetingList: React.FC<MeetingListProps> = ({ onEdit, refreshKey }) => {
           </Box>
         </DialogTitle>
         <DialogContent sx={{ pt: 3 }}>
-          {/* Meeting Summary */}
-          {meetingSummary && (
-            <Box sx={{ mb: 3 }}>
-              <Card sx={{ bgcolor: 'primary.50', mb: 2 }}>
-                <CardContent>
-                  <Typography variant="h6" gutterBottom>Meeting Summary</Typography>
-                  <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">Total Main Payment</Typography>
-                      <Typography variant="h6" color="primary.main">₹{meetingSummary.totalMainPayment}</Typography>
+          {attendanceSummary && (
+            <>
+              {/* Meeting Info */}
+              <Box sx={{ mb: 3 }}>
+                <Card sx={{ bgcolor: 'primary.50', mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Meeting Information</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2 }}>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Date</Typography>
+                        <Typography variant="h6" color="primary.main">
+                          {formatDate(attendanceSummary.meeting.date)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Time</Typography>
+                        <Typography variant="h6" color="primary.main">
+                          {formatTime(attendanceSummary.meeting.time)}
+                        </Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Location</Typography>
+                        <Typography variant="h6" color="primary.main">
+                          {attendanceSummary.meeting.location || 'Not specified'}
+                        </Typography>
+                      </Box>
                     </Box>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">Total Weekly Payment</Typography>
-                      <Typography variant="h6" color="primary.main">₹{meetingSummary.totalWeeklyPayment}</Typography>
-                    </Box>
-                    <Box>
-                      <Typography variant="body2" color="text.secondary">Attendance</Typography>
-                      <Typography variant="h6" color="success.main">
-                        {meetingSummary.presentAttendanceCount}/{meetingSummary.totalAttendanceCount} ({(meetingSummary.attendancePercentage || 0).toFixed(1)}%)
-                      </Typography>
-                    </Box>
-                  </Box>
-                </CardContent>
-              </Card>
-            </Box>
-          )}
+                  </CardContent>
+                </Card>
+              </Box>
 
-          {/* Attended Users */}
-          <Typography variant="h6" gutterBottom>Attended Users</Typography>
-          {attendedUsers.length === 0 ? (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <People sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                No users attended this meeting
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Attendance has not been recorded yet.
-              </Typography>
-            </Box>
-          ) : (
-            <List>
-              {attendedUsers.map((user, index) => (
-                <React.Fragment key={user.id}>
-                  <ListItem>
-                    <ListItemAvatar>
-                      <Avatar>{user.name?.charAt(0) || 'U'}</Avatar>
-                    </ListItemAvatar>
-                    <ListItemText
-                      primary={user.name}
-                      secondary={user.email}
-                    />
-                    <Chip
-                      label="Present"
-                      color="success"
-                      size="small"
-                      icon={<CheckCircle />}
-                    />
-                  </ListItem>
-                  {index < attendedUsers.length - 1 && <Divider />}
-                </React.Fragment>
-              ))}
-            </List>
+              {/* Attendance Statistics */}
+              <Box sx={{ mb: 3 }}>
+                <Card sx={{ bgcolor: 'success.50', mb: 2 }}>
+                  <CardContent>
+                    <Typography variant="h6" gutterBottom>Attendance Statistics</Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Total Members</Typography>
+                        <Typography variant="h6" color="primary.main">{attendanceSummary.totalUsers}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Present</Typography>
+                        <Typography variant="h6" color="success.main">{attendanceSummary.attendedCount}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Absent</Typography>
+                        <Typography variant="h6" color="error.main">{attendanceSummary.absentCount}</Typography>
+                      </Box>
+                      <Box>
+                        <Typography variant="body2" color="text.secondary">Attendance Rate</Typography>
+                        <Typography variant="h6" color="info.main">
+                          {attendanceSummary.attendancePercentage.toFixed(1)}%
+                        </Typography>
+                      </Box>
+                    </Box>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              {/* Attended Users */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" gutterBottom sx={{ color: 'success.main' }}>
+                  Present Members ({attendanceSummary.attendedUsers.length})
+                </Typography>
+                {attendanceSummary.attendedUsers.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
+                    <People sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      No members attended this meeting
+                    </Typography>
+                  </Box>
+                ) : (
+                  <List>
+                    {attendanceSummary.attendedUsers.map((user, index) => (
+                      <React.Fragment key={user.id}>
+                        <ListItem>
+                          <ListItemAvatar>
+                            <Avatar sx={{ bgcolor: 'success.main' }}>{user.name?.charAt(0) || 'U'}</Avatar>
+                          </ListItemAvatar>
+                          <ListItemText
+                            primary={user.name}
+                            secondary={
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  {user.email}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {user.phone} • {user.address}
+                                </Typography>
+                              </Box>
+                            }
+                          />
+                          <Chip
+                            label="Present"
+                            color="success"
+                            size="small"
+                            icon={<CheckCircle />}
+                          />
+                        </ListItem>
+                        {index < attendanceSummary.attendedUsers.length - 1 && <Divider />}
+                      </React.Fragment>
+                    ))}
+                  </List>
+                )}
+              </Box>
+
+              {/* Absent Users */}
+              <Box sx={{ mb: 3 }}>
+                <Typography variant="h6" gutterBottom sx={{ color: 'error.main' }}>
+                  Absent Members ({attendanceSummary.absentUsers.length})
+                </Typography>
+                {attendanceSummary.absentUsers.length === 0 ? (
+                  <Box sx={{ textAlign: 'center', py: 4 }}>
+                    <Cancel sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+                    <Typography variant="h6" color="text.secondary" gutterBottom>
+                      All members attended this meeting
+                    </Typography>
+                  </Box>
+                ) : (
+                  <List>
+                    {attendanceSummary.absentUsers.map((user, index) => (
+                      <React.Fragment key={user.id}>
+                        <ListItem>
+                          <ListItemAvatar>
+                            <Avatar sx={{ bgcolor: 'error.main' }}>{user.name?.charAt(0) || 'U'}</Avatar>
+                          </ListItemAvatar>
+                          <ListItemText
+                            primary={user.name}
+                            secondary={
+                              <Box>
+                                <Typography variant="body2" color="text.secondary">
+                                  {user.email}
+                                </Typography>
+                                <Typography variant="body2" color="text.secondary">
+                                  {user.phone} • {user.address}
+                                </Typography>
+                              </Box>
+                            }
+                          />
+                          <Chip
+                            label="Absent"
+                            color="error"
+                            size="small"
+                            icon={<Cancel />}
+                          />
+                        </ListItem>
+                        {index < attendanceSummary.absentUsers.length - 1 && <Divider />}
+                      </React.Fragment>
+                    ))}
+                  </List>
+                )}
+              </Box>
+            </>
           )}
         </DialogContent>
         <DialogActions sx={{ p: 3 }}>
           <Button 
-            onClick={() => setAttendedUsersOpen(false)} 
+            onClick={() => setAttendanceDialogOpen(false)} 
             variant="contained"
             sx={{ borderRadius: 2 }}
           >

@@ -1,5 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { apiService } from '../../services/api';
+import AuthenticatedLayout from '../layout/AuthenticatedLayout';
+import { AttendanceSummary, MeetingPaymentResponse } from '../../types/common';
+import { Editor } from '@tinymce/tinymce-react';
+import { TINYMCE_API_KEY, TINYMCE_CONFIG } from '../../config/tinymce';
 import {
   Container,
   Paper,
@@ -19,14 +23,17 @@ import {
   ListItemText,
   ListItemAvatar,
   useTheme,
-  IconButton
+  IconButton,
+  Tabs,
+  Tab
 } from '@mui/material';
 import {
   Event,
   Group,
   Payment,
   ArrowBack,
-  Save
+  Save,
+  Description
 } from '@mui/icons-material';
 import { Member } from '../members/MemberPage';
 
@@ -36,6 +43,18 @@ interface Meeting {
   time: string;
   description?: string;
   location?: string;
+}
+
+interface MeetingMinutes {
+  meetingId: number;
+  meetingMinutes: string;
+  updatedAt: string;
+  updatedBy: string;
+}
+
+interface MeetingMinutesRequest {
+  meetingId: number;
+  meetingMinutes: string;
 }
 
 interface MeetingDetailsPageProps {
@@ -55,13 +74,23 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
   const [saving, setSaving] = useState(false);
   const [savingAttendance, setSavingAttendance] = useState(false);
   const [savingPayments, setSavingPayments] = useState(false);
+  const [savingMinutes, setSavingMinutes] = useState(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState(0);
+  
+  // Meeting minutes state
+  const [meetingMinutes, setMeetingMinutes] = useState('');
+  const [existingMinutes, setExistingMinutes] = useState<string | null>(null);
+  const [minutesUpdateInfo, setMinutesUpdateInfo] = useState<{ updatedAt: string; updatedBy: string } | null>(null);
   
   // Attendance state
   const [attendance, setAttendance] = useState<{ [key: number]: boolean }>({});
+  const [attendanceSummary, setAttendanceSummary] = useState<AttendanceSummary | null>(null);
   
   // Payment state
   const [payments, setPayments] = useState<{ [key: number]: { mainPayment: string; weeklyPayment: string } }>({});
+  const [selectedPayments, setSelectedPayments] = useState<{ [key: number]: boolean }>({});
+  const [meetingPaymentResponse, setMeetingPaymentResponse] = useState<MeetingPaymentResponse | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -74,7 +103,7 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
         setMeeting(meetingResponse);
         
         // Fetch all members
-        const membersResponse = await apiService.get<Member[]>('/api/User');
+        const membersResponse = await apiService.get<Member[]>('/api/User/Active');
         setMembers(membersResponse);
         
         // Initialize attendance and payments
@@ -86,8 +115,63 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
           initialPayments[member.id] = { mainPayment: '200', weeklyPayment: '10' };
         });
         
-        setAttendance(initialAttendance);
-        setPayments(initialPayments);
+        // Initialize selected payments (all unchecked by default)
+        const initialSelectedPayments: { [key: number]: boolean } = {};
+        membersResponse.forEach(member => {
+          initialSelectedPayments[member.id] = false;
+        });
+        setSelectedPayments(initialSelectedPayments);
+        
+        // Fetch attendance summary to pre-populate attendance
+        try {
+          const attendanceResponse = await apiService.get<AttendanceSummary>(`/api/Attendance/meeting/${meetingId}/summary`);
+          setAttendanceSummary(attendanceResponse);
+          
+          // Mark attended users as checked
+          const updatedAttendance = { ...initialAttendance };
+          attendanceResponse.attendedUsers.forEach(user => {
+            updatedAttendance[user.id] = true;
+          });
+          setAttendance(updatedAttendance);
+        } catch (err) {
+          // If attendance summary doesn't exist yet, use default initialization
+          setAttendance(initialAttendance);
+        }
+        
+        // Fetch meeting payment details to pre-populate payment fields
+        try {
+          const paymentResponse = await apiService.get<MeetingPaymentResponse>(`/api/MeetingPayment/meeting/${meetingId}`);
+          setMeetingPaymentResponse(paymentResponse);
+          
+          // Populate payment fields with existing data
+          const updatedPayments = { ...initialPayments };
+          const updatedSelectedPayments = { ...initialSelectedPayments };
+          
+          paymentResponse.users.forEach(user => {
+            updatedPayments[user.id] = {
+              mainPayment: user.mainPayment.toString(),
+              weeklyPayment: user.weeklyPayment.toString()
+            };
+            updatedSelectedPayments[user.id] = true; // Mark as selected if they have payment data
+          });
+          
+          setPayments(updatedPayments);
+          setSelectedPayments(updatedSelectedPayments);
+        } catch (err) {
+          // If payment data doesn't exist yet, use default initialization
+          setPayments(initialPayments);
+        }
+
+        // Fetch existing meeting minutes
+        try {
+          const minutesResponse = await apiService.get<MeetingMinutes>(`/api/Meeting/${meetingId}/minutes`);
+          setExistingMinutes(minutesResponse.meetingMinutes);
+          setMeetingMinutes(minutesResponse.meetingMinutes);
+          setMinutesUpdateInfo({ updatedAt: minutesResponse.updatedAt, updatedBy: minutesResponse.updatedBy });
+        } catch (err) {
+          // If minutes don't exist yet, start with empty content
+          setMeetingMinutes('');
+        }
         
       } catch (err: any) {
         setError(err.response?.data?.message || 'Failed to fetch meeting details.');
@@ -100,6 +184,10 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
       fetchData();
     }
   }, [meetingId]);
+
+  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
+    setActiveTab(newValue);
+  };
 
   const handleAttendanceChange = (memberId: number, checked: boolean) => {
     setAttendance(prev => ({
@@ -119,23 +207,29 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
     }));
   };
 
+  const handlePaymentSelectionChange = (memberId: number, checked: boolean) => {
+    setSelectedPayments(prev => ({
+      ...prev,
+      [memberId]: checked
+    }));
+  };
+
   const handleSaveAttendance = async () => {
     try {
       setSavingAttendance(true);
       setSuccessMessage(null);
       
-      // Get all members with their attendance status
-      const attendancePromises = members.map(member => {
-        const isPresent = attendance[member.id] || false;
-        return apiService.post('/api/Attendance', {
-          userId: member.id,
-          meetingId: parseInt(meetingId),
-          isPresent: isPresent
-        });
-      });
+      // Prepare attendance data in the new bulk format
+      const attendances = members.map(member => ({
+        userId: member.id,
+        isPresent: attendance[member.id] || false
+      }));
       
-      // Save all attendance records
-      await Promise.all(attendancePromises);
+      // Save attendance using the new bulk endpoint
+      await apiService.post('/api/Attendance/bulk', {
+        meetingId: parseInt(meetingId),
+        attendances: attendances
+      });
       
       setSuccessMessage('Attendance saved successfully!');
       
@@ -151,19 +245,24 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
       setSavingPayments(true);
       setSuccessMessage(null);
       
-      const paymentData = Object.entries(payments)
-        .filter(([_, payment]) => payment.mainPayment.trim() !== '' || payment.weeklyPayment.trim() !== '')
+      // Prepare payment data in the new bulk format - only for selected members
+      const paymentsData = Object.entries(payments)
+        .filter(([memberId, payment]) => {
+          const isSelected = selectedPayments[parseInt(memberId)] || false;
+          const hasPaymentData = payment.mainPayment.trim() !== '' || payment.weeklyPayment.trim() !== '';
+          return isSelected && hasPaymentData;
+        })
         .map(([memberId, payment]) => ({
           userId: parseInt(memberId),
-          meetingId: parseInt(meetingId),
           mainPayment: payment.mainPayment ? parseFloat(payment.mainPayment) : 0,
           weeklyPayment: payment.weeklyPayment ? parseFloat(payment.weeklyPayment) : 0
         }));
       
-      // Save payments
-      for (const payment of paymentData) {
-        await apiService.post('/api/MeetingPayment', payment);
-      }
+      // Save payments using the new bulk endpoint
+      await apiService.post('/api/MeetingPayment/bulk', {
+        meetingId: parseInt(meetingId),
+        payments: paymentsData
+      });
       
       setSuccessMessage('Payment details saved successfully!');
       
@@ -171,6 +270,29 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
       setError(err.response?.data?.message || 'Failed to save payment details.');
     } finally {
       setSavingPayments(false);
+    }
+  };
+
+  const handleSaveMinutes = async () => {
+    try {
+      setSavingMinutes(true);
+      setSuccessMessage(null);
+      
+      const minutesData: MeetingMinutesRequest = {
+        meetingId: parseInt(meetingId),
+        meetingMinutes: meetingMinutes
+      };
+      
+      await apiService.post('/api/Meeting/minutes', minutesData);
+      
+      setSuccessMessage('Meeting minutes saved successfully!');
+      setExistingMinutes(meetingMinutes);
+      setMinutesUpdateInfo({ updatedAt: new Date().toISOString(), updatedBy: 'User' }); // Assuming current user is the updater
+      
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to save meeting minutes.');
+    } finally {
+      setSavingMinutes(false);
     }
   };
 
@@ -225,8 +347,9 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
   }
 
   return (
-    <Box sx={{ p: 3 }}>
-      <Paper elevation={3} sx={{ p: 4, mt: 2 }}>
+    <AuthenticatedLayout>
+      <Box sx={{ p: 3 }}>
+        <Paper elevation={3} sx={{ p: 4, mt: 2 }}>
         {/* Header */}
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 4 }}>
           <IconButton onClick={onBack} sx={{ mr: 2 }}>
@@ -278,125 +401,245 @@ const MeetingDetailsPage: React.FC<MeetingDetailsPageProps> = ({ onBack }) => {
           </CardContent>
         </Card>
 
-        {/* Two Column Layout */}
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
-          {/* Attendance Column */}
-          <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                  <Group sx={{ mr: 2, color: 'primary.main' }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Attendance
+        {/* Meeting Summary */}
+        {attendanceSummary && (
+          <Card sx={{ mb: 4, bgcolor: 'success.50' }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom sx={{ color: 'success.main', fontWeight: 600 }}>
+                Current Meeting Summary
+              </Typography>
+              <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 3 }}>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Total Members</Typography>
+                  <Typography variant="h6" color="primary.main">{attendanceSummary.totalUsers}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Present</Typography>
+                  <Typography variant="h6" color="success.main">{attendanceSummary.attendedCount}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Absent</Typography>
+                  <Typography variant="h6" color="error.main">{attendanceSummary.absentCount}</Typography>
+                </Box>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">Attendance Rate</Typography>
+                  <Typography variant="h6" color="info.main">
+                    {attendanceSummary.attendancePercentage.toFixed(1)}%
                   </Typography>
                 </Box>
-                
-                <List>
-                  {members.map((member, index) => (
-                    <React.Fragment key={member.id}>
-                      <ListItem>
-                        <Checkbox
-                          checked={attendance[member.id] || false}
-                          onChange={(e) => handleAttendanceChange(member.id, e.target.checked)}
-                          color="primary"
-                        />
-                        <ListItemAvatar>
-                          <Avatar>{member.name.charAt(0)}</Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={member.name}
-                          secondary={member.email}
-                        />
-                      </ListItem>
-                      {index < members.length - 1 && <Divider />}
-                    </React.Fragment>
-                  ))}
-                </List>
-              </CardContent>
-            </Card>
-          </Box>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
 
-          {/* Payment Column */}
-          <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
-            <Card>
-              <CardContent>
-                <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
-                  <Payment sx={{ mr: 2, color: 'success.main' }} />
-                  <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                    Payment Details
+        {/* Tabs */}
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 3 }}>
+          <Tabs value={activeTab} onChange={handleTabChange} aria-label="meeting details tabs">
+            <Tab label="Attendance & Payments" />
+            <Tab label="Meeting Minutes" />
+          </Tabs>
+        </Box>
+
+        {/* Tab Content */}
+        {activeTab === 0 && (
+          <>
+            {/* Two Column Layout */}
+            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+              {/* Attendance Column */}
+              <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                      <Group sx={{ mr: 2, color: 'primary.main' }} />
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Attendance
+                      </Typography>
+                    </Box>
+                    
+                    <List>
+                      {members.map((member, index) => {
+                        const isCurrentlyAttended = attendanceSummary?.attendedUsers.some(user => user.id === member.id) || false;
+                        return (
+                          <React.Fragment key={member.id}>
+                            <ListItem>
+                              <Checkbox
+                                checked={attendance[member.id] || false}
+                                onChange={(e) => handleAttendanceChange(member.id, e.target.checked)}
+                                color="primary"
+                              />
+                              <ListItemAvatar>
+                                <Avatar sx={{ 
+                                  bgcolor: isCurrentlyAttended ? 'success.main' : 'grey.300',
+                                  color: isCurrentlyAttended ? 'white' : 'text.primary'
+                                }}>
+                                  {member.name.charAt(0)}
+                                </Avatar>
+                              </ListItemAvatar>
+                              <ListItemText
+                                primary={
+                                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                    {member.name}
+                                    {isCurrentlyAttended && (
+                                      <Typography 
+                                        variant="caption" 
+                                        sx={{ 
+                                          bgcolor: 'success.main', 
+                                          color: 'white', 
+                                          px: 1, 
+                                          py: 0.5, 
+                                          borderRadius: 1,
+                                          fontSize: '0.7rem'
+                                        }}
+                                      >
+                                        Previously Attended
+                                      </Typography>
+                                    )}
+                                  </Box>
+                                }
+                                secondary={member.email}
+                              />
+                            </ListItem>
+                            {index < members.length - 1 && <Divider />}
+                          </React.Fragment>
+                        );
+                      })}
+                    </List>
+                  </CardContent>
+                </Card>
+              </Box>
+
+              {/* Payment Column */}
+              <Box sx={{ flex: '1 1 400px', minWidth: 0 }}>
+                <Card>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                      <Payment sx={{ mr: 2, color: 'success.main' }} />
+                      <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                        Payment Details
+                      </Typography>
+                    </Box>
+                    
+                    <List>
+                      {members.map((member, index) => (
+                        <React.Fragment key={member.id}>
+                          <ListItem>
+                            <Checkbox
+                              checked={selectedPayments[member.id] || false}
+                              onChange={(e) => handlePaymentSelectionChange(member.id, e.target.checked)}
+                              color="success"
+                            />
+                            <ListItemAvatar>
+                              <Avatar sx={{ bgcolor: 'success.main' }}>{member.name.charAt(0)}</Avatar>
+                            </ListItemAvatar>
+                            <ListItemText
+                              primary={member.name}
+                              secondary={member.email}
+                            />
+                            <Box sx={{ display: 'flex', gap: 1, minWidth: 300, ml: 2 }}>
+                              <TextField
+                                type="number"
+                                placeholder="Main Payment"
+                                value={payments[member.id]?.mainPayment || ''}
+                                onChange={(e) => handlePaymentChange(member.id, 'mainPayment', e.target.value)}
+                                size="small"
+                                sx={{ width: 150 }}
+                                InputProps={{
+                                  startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography>,
+                                }}
+                              />
+                              <TextField
+                                type="number"
+                                placeholder="Weekly Payment"
+                                value={payments[member.id]?.weeklyPayment || ''}
+                                onChange={(e) => handlePaymentChange(member.id, 'weeklyPayment', e.target.value)}
+                                size="small"
+                                sx={{ width: 150 }}
+                                InputProps={{
+                                  startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography>,
+                                }}
+                              />
+                            </Box>
+                          </ListItem>
+                          {index < members.length - 1 && <Divider />}
+                        </React.Fragment>
+                      ))}
+                    </List>
+                  </CardContent>
+                </Card>
+              </Box>
+            </Box>
+
+            {/* Save Buttons */}
+            <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 4 }}>
+              <Button
+                variant="outlined"
+                onClick={handleSaveAttendance}
+                disabled={savingAttendance}
+                startIcon={savingAttendance ? <CircularProgress size={20} /> : <Group />}
+                size="large"
+                color="primary"
+              >
+                {savingAttendance ? 'Saving...' : 'Save Attendance'}
+              </Button>
+              <Button
+                variant="outlined"
+                onClick={handleSavePayments}
+                disabled={savingPayments}
+                startIcon={savingPayments ? <CircularProgress size={20} /> : <Payment />}
+                size="large"
+                color="success"
+              >
+                {savingPayments ? 'Saving...' : 'Save Payment Details'}
+              </Button>
+            </Box>
+          </>
+        )}
+
+        {activeTab === 1 && (
+          <Card>
+            <CardContent>
+              <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
+                <Description sx={{ mr: 2, color: 'info.main' }} />
+                <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                  Meeting Minutes
+                </Typography>
+              </Box>
+              
+              {minutesUpdateInfo && (
+                <Box sx={{ mb: 2, p: 2, bgcolor: 'grey.50', borderRadius: 1 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Last updated: {new Date(minutesUpdateInfo.updatedAt).toLocaleString()} by {minutesUpdateInfo.updatedBy}
                   </Typography>
                 </Box>
-                
-                <List>
-                  {members.map((member, index) => (
-                    <React.Fragment key={member.id}>
-                      <ListItem>
-                        <ListItemAvatar>
-                          <Avatar>{member.name.charAt(0)}</Avatar>
-                        </ListItemAvatar>
-                        <ListItemText
-                          primary={member.name}
-                          secondary={member.email}
-                        />
-                        <Box sx={{ display: 'flex', gap: 1, minWidth: 300, ml: 2 }}>
-                          <TextField
-                            type="number"
-                            placeholder="Main Payment"
-                            value={payments[member.id]?.mainPayment || ''}
-                            onChange={(e) => handlePaymentChange(member.id, 'mainPayment', e.target.value)}
-                            size="small"
-                            sx={{ width: 150 }}
-                            InputProps={{
-                              startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography>,
-                            }}
-                          />
-                          <TextField
-                            type="number"
-                            placeholder="Weekly Payment"
-                            value={payments[member.id]?.weeklyPayment || ''}
-                            onChange={(e) => handlePaymentChange(member.id, 'weeklyPayment', e.target.value)}
-                            size="small"
-                            sx={{ width: 150 }}
-                            InputProps={{
-                              startAdornment: <Typography sx={{ mr: 1 }}>₹</Typography>,
-                            }}
-                          />
-                        </Box>
-                      </ListItem>
-                      {index < members.length - 1 && <Divider />}
-                    </React.Fragment>
-                  ))}
-                </List>
-              </CardContent>
-            </Card>
-          </Box>
-        </Box>
-
-        {/* Save Buttons */}
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 2, mt: 4 }}>
-          <Button
-            variant="outlined"
-            onClick={handleSaveAttendance}
-            disabled={savingAttendance}
-            startIcon={savingAttendance ? <CircularProgress size={20} /> : <Group />}
-            size="large"
-            color="primary"
-          >
-            {savingAttendance ? 'Saving...' : 'Save Attendance'}
-          </Button>
-          <Button
-            variant="outlined"
-            onClick={handleSavePayments}
-            disabled={savingPayments}
-            startIcon={savingPayments ? <CircularProgress size={20} /> : <Payment />}
-            size="large"
-            color="success"
-          >
-            {savingPayments ? 'Saving...' : 'Save Payment Details'}
-          </Button>
-        </Box>
+              )}
+              
+              <Box sx={{ mb: 3 }}>
+                <Editor
+                  apiKey={TINYMCE_API_KEY}
+                  value={meetingMinutes}
+                  onEditorChange={(content) => setMeetingMinutes(content)}
+                  init={TINYMCE_CONFIG}
+                />
+              </Box>
+              
+              <Box sx={{ display: 'flex', justifyContent: 'flex-end' }}>
+                <Button
+                  variant="contained"
+                  onClick={handleSaveMinutes}
+                  disabled={savingMinutes}
+                  startIcon={savingMinutes ? <CircularProgress size={20} /> : <Save />}
+                  size="large"
+                  color="info"
+                >
+                  {savingMinutes ? 'Saving...' : 'Save Meeting Minutes'}
+                </Button>
+              </Box>
+            </CardContent>
+          </Card>
+        )}
       </Paper>
     </Box>
+    </AuthenticatedLayout>
   );
 };
 

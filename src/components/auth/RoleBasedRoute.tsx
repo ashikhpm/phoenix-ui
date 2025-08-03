@@ -1,11 +1,12 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { getUserRole } from '../../utils/helpers';
 import { Box, Typography, Button, Container } from '@mui/material';
 import { Security, ArrowBack } from '@mui/icons-material';
 
 interface RoleBasedRouteProps {
   children: React.ReactNode;
-  allowedRoles: ('Secretary' | 'Member')[];
+  allowedRoles: ('Secretary' | 'President' | 'Treasurer' | 'Member')[];
   fallbackComponent?: React.ReactNode;
 }
 
@@ -68,8 +69,11 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
     );
   }
 
+  // Get user role from the new structure
+  const userRole = getUserRole(user);
+
   // Check if user has required role
-  const hasRequiredRole = allowedRoles.includes(user.role);
+  const hasRequiredRole = allowedRoles.includes(userRole as any);
 
   if (!hasRequiredRole) {
     // Show custom fallback or default access denied
@@ -97,7 +101,7 @@ const RoleBasedRoute: React.FC<RoleBasedRouteProps> = ({
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             Required roles: {allowedRoles.join(', ')}
             <br />
-            Your role: {user.role}
+            Your role: {userRole}
           </Typography>
           <Button 
             variant="contained" 

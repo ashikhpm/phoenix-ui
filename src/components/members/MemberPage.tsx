@@ -11,6 +11,28 @@ export interface Member {
   address: string;
   email: string;
   phone: string;
+  aadharNumber: string;
+  isActive: boolean;
+  inactiveDate: string | null;
+  joiningDate: string | null;
+  userRoleId: number;
+  userRole: {
+    id: number;
+    name: string;
+    description: string;
+    users: any[];
+  };
+  attendances: any[];
+  meetingPayments: MeetingPayment[];
+}
+
+interface MeetingPayment {
+  id: number;
+  amount: number;
+  paymentDate: string;
+  meetingId: number;
+  memberId: number;
+  status: 'paid' | 'pending' | 'cancelled';
 }
 
 const MemberPage: React.FC = () => {

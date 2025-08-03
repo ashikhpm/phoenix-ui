@@ -34,8 +34,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   // Check if we have a valid JWT token
   const isAuthenticated = useMemo(() => {
     const token = localStorage.getItem('authToken');
-    return !!token;
-  }, []);
+    return !!token && !!user;
+  }, [user]);
 
   const clearError = useCallback(() => setError(null), []);
 
@@ -52,7 +52,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       
       // Set user data
       setUser(response.user);
-      console.log('User data set, navigating to members page...');
+      console.log('User data set, navigating to dashboard...');
 
       // Navigate to dashboard - use setTimeout to ensure state updates first
       setTimeout(() => {
@@ -61,7 +61,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         // Force a hash change event
         window.dispatchEvent(new HashChangeEvent('hashchange'));
         console.log('Navigation complete');
-      }, 100);
+      }, 1000);
     } catch (err: any) {
       console.error('Login failed:', err);
       setError(err.response?.data?.message || 'Login failed. Please try again.');

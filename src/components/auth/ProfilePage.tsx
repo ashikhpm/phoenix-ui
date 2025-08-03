@@ -1,5 +1,6 @@
 import React from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { hasAdminPrivilegesFromUser, hasAdminPrivileges } from '../../utils/helpers';
 import {
   Box,
   Card,
@@ -29,7 +30,7 @@ const ProfilePage: React.FC = () => {
   }
 
   const getRoleColor = (role: string) => {
-    return role === 'Secretary' ? 'error' : 'primary';
+    return hasAdminPrivileges(role) ? 'error' : 'primary';
   };
 
   return (
@@ -60,8 +61,8 @@ const ProfilePage: React.FC = () => {
                   {user.name.charAt(0).toUpperCase()}
                 </Avatar>
                 <Chip
-                  label={user.role}
-                  color={getRoleColor(user.role) as any}
+                  label={user.userRole?.name || 'N/A'}
+                  color={getRoleColor(user.userRole?.name || '') as any}
                   icon={<Security />}
                   sx={{ mb: 2 }}
                 />
@@ -107,10 +108,10 @@ const ProfilePage: React.FC = () => {
                       <Typography variant="h6">Account Information</Typography>
                     </Box>
                     <Typography variant="body1" sx={{ mb: 1 }}>
-                      <strong>Role:</strong> {user.role}
+                      <strong>Role:</strong> {user.userRole?.name || 'N/A'}
                     </Typography>
                     <Typography variant="body2" color="text.secondary">
-                      {user.role === 'Secretary' 
+                      {hasAdminPrivilegesFromUser(user)
                         ? 'You have full access to all features and can manage all data.'
                         : 'You have limited access to dashboard features only.'
                       }

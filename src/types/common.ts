@@ -4,7 +4,20 @@ export interface User {
   id: number;
   name: string;
   email: string;
-  role: 'Secretary' | 'Member';
+  address: string;
+  phone: string;
+  isActive: boolean;
+  inactiveDate: string | null;
+  joiningDate: string | null;
+  userRoleId: number;
+  userRole: {
+    id: number;
+    name: string;
+    description: string;
+    users: any[];
+  };
+  attendances: any[];
+  meetingPayments: any[];
 }
 
 export interface Loan {
@@ -126,4 +139,43 @@ export interface LoanFormData {
   loanTypeId: number;
   amount: number;
   status: string;
+}
+
+export interface AttendanceSummary {
+  meetingId: number;
+  meeting: {
+    id: number;
+    date: string;
+    time: string;
+    description?: string;
+    location?: string;
+  };
+  attendedUsers: {
+    id: number;
+    name: string;
+    address: string;
+    email: string;
+    phone: string;
+  }[];
+  absentUsers: {
+    id: number;
+    name: string;
+    address: string;
+    email: string;
+    phone: string;
+  }[];
+  totalUsers: number;
+  attendedCount: number;
+  absentCount: number;
+  attendancePercentage: number;
+}
+
+export interface MeetingPaymentResponse {
+  meetingId: number;
+  users: {
+    id: number;
+    name: string;
+    mainPayment: number;
+    weeklyPayment: number;
+  }[];
 } 

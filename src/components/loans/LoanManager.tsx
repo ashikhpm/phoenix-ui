@@ -40,13 +40,20 @@ import { useAuth } from '../../contexts/AuthContext';
 import AuthenticatedLayout from '../layout/AuthenticatedLayout';
 import LoanRepayment from './LoanRepayment';
 import LoanRequests from './LoanRequests';
+import { hasAdminPrivilegesFromUser } from '../../utils/helpers';
 
 interface User {
   id: number;
   name: string;
-  address: string;
-  email: string;
-  phone: string;
+}
+
+interface MeetingPayment {
+  id: number;
+  amount: number;
+  paymentDate: string;
+  meetingId: number;
+  memberId: number;
+  status: 'paid' | 'pending' | 'cancelled';
 }
 
 interface Loan {
@@ -86,13 +93,12 @@ const emptyLoan: Partial<Loan> = {
   interestRate: 0,
   amount: 0,
   interestAmount: 0,
-  status: '',
 };
 
 const LoanManager: React.FC = () => {
   const theme = useTheme();
   const { user } = useAuth();
-  const isSecretary = user?.role === 'Secretary';
+  const isSecretary = hasAdminPrivilegesFromUser(user);
   const [loans, setLoans] = useState<Loan[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -124,7 +130,7 @@ const LoanManager: React.FC = () => {
   // Fetch users for dropdown
   const fetchUsers = async () => {
     try {
-      const response = await apiService.get<User[]>('/api/User');
+      const response = await apiService.get<{id: number, name: string}[]>('/api/Loan/users');
       setUsers(response);
     } catch (err) {
       // ignore user fetch error for now
@@ -200,7 +206,7 @@ const LoanManager: React.FC = () => {
         loanTypeId: formData.loanTypeId || 0,
         loanTerm: formData.loanTerm || 0,
         amount: formData.amount,
-        status: formData.status || 'Active'
+        status: formData.status || 'Sanctioned'
       };
 
       if (selectedLoan?.id) {
@@ -569,7 +575,7 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                      <TableCell sx={{ py: 3 }}>
                        <Box sx={{ display: 'flex', alignItems: 'center' }}>
                          <TrendingUp sx={{ mr: 2, fontSize: 24 }} />
-                         Interest Amount
+                         Interest Amount Till Date
                        </Box>
                      </TableCell>
                      <TableCell sx={{ py: 3 }}>
@@ -671,11 +677,7 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                           <Chip 
                             label={loan.status}
-                            color={
-                              loan.status === 'Ongoing' ? 'info' : 
-                              loan.status === 'Due date exceeded' ? 'error' : 
-                              'success'
-                            }
+                            color={loan.status === 'Sanctioned' ? 'success' : 'default'}
                             size="small"
                             variant="outlined"
                           />
@@ -711,19 +713,19 @@ const LoanList: React.FC<LoanListProps> = ({ loans, loading, error, onEdit, onDe
                              <IconButton 
                                color="success" 
                                onClick={() => onRepayment(loan)}
-                               disabled={loan.status.toLowerCase() === 'closed'}
+                               disabled={loan.status === 'Closed'}
                                sx={{ 
-                                 backgroundColor: loan.status.toLowerCase() === 'closed' 
+                                 backgroundColor: loan.status === 'Closed' 
                                    ? theme.palette.grey[300] 
                                    : theme.palette.success.light + '20',
                                  '&:hover': {
-                                   backgroundColor: loan.status.toLowerCase() === 'closed'
+                                   backgroundColor: loan.status === 'Closed'
                                      ? theme.palette.grey[300]
                                      : theme.palette.success.light + '40',
-                                   transform: loan.status.toLowerCase() === 'closed' ? 'none' : 'scale(1.1)',
+                                   transform: loan.status === 'Closed' ? 'none' : 'scale(1.1)',
                                  },
                                  transition: 'all 0.2s ease-in-out',
-                                 opacity: loan.status.toLowerCase() === 'closed' ? 0.5 : 1,
+                                 opacity: loan.status === 'Closed' ? 0.5 : 1,
                                }}
                              >
                                <Payment />
@@ -835,8 +837,13 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
 
   useEffect(() => {
     setFormData(loan || emptyLoan);
-    // Reset loan type selection when loan changes
-    setSelectedLoanTypeId('');
+    // Set loan type and loan term when editing an existing loan
+    if (loan) {
+      setSelectedLoanTypeId(loan.loanTypeId || '');
+    } else {
+      // Reset loan type selection when creating new loan
+      setSelectedLoanTypeId('');
+    }
   }, [loan]);
 
   // Handle loan type selection
@@ -844,22 +851,26 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
     setSelectedLoanTypeId(loanTypeId);
     const selectedType = loanTypes.find(lt => lt.id === loanTypeId);
     if (selectedType) {
-      // Set default loan term based on loan type
-      let defaultLoanTerm = 1; // Default 1 month
-      if (selectedType.loanTypeName === 'Marriage Loan') {
-        defaultLoanTerm = 6; // 6 months
-      } else if (selectedType.loanTypeName === 'Personal Loan') {
-        defaultLoanTerm = 3; // 3 months
+      // Only set default loan term for new loans, preserve existing term for edits
+      let loanTerm = formData.loanTerm || 0;
+      if (!loan) { // Only for new loans
+        if (selectedType.loanTypeName === 'Marriage Loan') {
+          loanTerm = 6; // 6 months
+        } else if (selectedType.loanTypeName === 'Personal Loan') {
+          loanTerm = 3; // 3 months
+        } else {
+          loanTerm = 1; // Default 1 month
+        }
       }
       
       // Calculate due date based on selected date and loan term
       const selectedDate = formData.date ? new Date(formData.date) : new Date();
       const dueDate = new Date(selectedDate);
-      dueDate.setMonth(dueDate.getMonth() + defaultLoanTerm);
+      dueDate.setMonth(dueDate.getMonth() + loanTerm);
       
       setFormData({ 
         ...formData, 
-        loanTerm: defaultLoanTerm,
+        loanTerm: loanTerm,
         interestRate: selectedType.interestRate,
         dueDate: dueDate.toISOString().split('T')[0]
       });
@@ -1026,21 +1037,8 @@ const LoanForm: React.FC<LoanFormProps> = ({ loan, users, loanTypes, onSaved, on
           InputProps={{ startAdornment: <span>₹</span> }}
         />
 
-        <FormControl fullWidth required>
-          <InputLabel>Status</InputLabel>
-          <Select
-            value={formData.status || ''}
-            onChange={e => setFormData({ ...formData, status: e.target.value })}
-            label="Status"
-          >
-            <MenuItem value="Ongoing">Ongoing</MenuItem>
-            <MenuItem value="Due date exceeded">Due date exceeded</MenuItem>
-            <MenuItem value="Closed">Closed</MenuItem>
-          </Select>
-        </FormControl>
-
         {/* Summary Section */}
-        {selectedLoanType && formData.amount && formData.loanTerm && (
+        {selectedLoanType && formData.amount && formData.amount > 0 && formData.loanTerm && formData.loanTerm > 0 && (
           <Box sx={{ 
             p: 2, 
             backgroundColor: theme.palette.grey[50], 

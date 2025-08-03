@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { hasAdminPrivilegesFromUser } from '../../utils/helpers';
 import {
   AppBar,
   Toolbar,
@@ -21,7 +22,8 @@ import {
   Event,
   Settings,
   Logout,
-  AccountBalance
+  AccountBalance,
+  AccountTree
 } from '@mui/icons-material';
 
 const Navbar: React.FC = () => {
@@ -61,9 +63,24 @@ const Navbar: React.FC = () => {
   return (
     <AppBar position="fixed" sx={{ zIndex: theme.zIndex.drawer + 1 }}>
       <Toolbar>
-        <Typography variant="h6" component="div" sx={{ mr: 3, fontWeight: 600 }}>
-          Phoenix Sangam
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', mr: 3 }}>
+          <img 
+            src="/logo.png" 
+            alt="Phoenix Sangam Logo" 
+            style={{ 
+              height: 40, 
+              width: 'auto',
+              marginRight: 12
+            }}
+            onError={(e) => {
+              // Hide logo if file doesn't exist
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+          <Typography variant="h6" component="div" sx={{ fontWeight: 600 }}>
+            Phoenix Sangam
+          </Typography>
+        </Box>
 
         {isMobile ? (
           <>
@@ -98,7 +115,7 @@ const Navbar: React.FC = () => {
                 <AccountBalance sx={{ mr: 1 }} />
                 Loans
               </MenuItem>
-              {user?.role === 'Secretary' && (
+              {hasAdminPrivilegesFromUser(user) && (
                 <>
                   <MenuItem onClick={() => handleNavigation('#members')}>
                     <People sx={{ mr: 1 }} />
@@ -107,6 +124,10 @@ const Navbar: React.FC = () => {
                   <MenuItem onClick={() => handleNavigation('#meetings')}>
                     <Event sx={{ mr: 1 }} />
                     Meetings
+                  </MenuItem>
+                  <MenuItem onClick={() => handleNavigation('#activity')}>
+                    <AccountTree sx={{ mr: 1 }} />
+                    Activity
                   </MenuItem>
                 </>
               )}
@@ -141,7 +162,7 @@ const Navbar: React.FC = () => {
               >
                 Loans
               </Button>
-              {user?.role === 'Secretary' && (
+              {hasAdminPrivilegesFromUser(user) && (
                 <>
                   <Button
                     color="inherit"
@@ -156,6 +177,13 @@ const Navbar: React.FC = () => {
                     startIcon={<Event />}
                   >
                     Meetings
+                  </Button>
+                  <Button
+                    color="inherit"
+                    onClick={() => handleNavigation('#activity')}
+                    startIcon={<AccountTree />}
+                  >
+                    Activity
                   </Button>
                 </>
               )}
